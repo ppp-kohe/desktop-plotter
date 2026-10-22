@@ -19,7 +19,7 @@ import java.util.stream.IntStream;
 ///   a row contains columns.
 ///   In the bar-chart, columns are a group of bars.
 /// * `set...` methods changes parameters and graphics primitives for rendering, like {@link Paint} ({@link Color} is a subtype)
-///     and {@link Stroke}
+///     and {@link Stroke}. Those methods are defined in {@link PlotterState}
 /// * `plot...` methods actually do painting graphics
 /// ```java
 ///     var plotter = new Plotter(1000, 1000);    //craetes BufferedImage w x h
@@ -35,7 +35,7 @@ import java.util.stream.IntStream;
 /// ```
 ///
 public class Plotter implements PlotterState<Plotter> {
-    /** optional image object */
+    ///optional image object
     protected BufferedImage image;
     protected Graphics2D graphics;
 
@@ -54,33 +54,32 @@ public class Plotter implements PlotterState<Plotter> {
     protected double plotAreaTopYRatio = 0.15;
     protected double plotAreaBottomYRatio = 0.1;
 
-    /**
-     * plotAreaLeftX can be computed from {@link #width} * {@link #plotAreaLeftXRatio}
-     */
+    ///plotAreaLeftX can be computed from {@link #width} * {@link #plotAreaLeftXRatio}
     protected double plotAreaLeftX = 20;
     protected double plotAreaRightX = 20;
 
-    /**
-     *  <pre>
-     *   ------------------ y=0
-     *    | plotAreaTopY
-     *   ------------------ height-plotAreaBottomY-plotAreaHeight = plotAreaTopY: p=1.0
-     *    |
-     *    | plotAreaHeight
-     *    |
-     *   ------------------ height-plotAreaBottomY: p=0
-     *    | plotAreaBottomY
-     *   ------------------ height
-     * </pre>
-     *  plotAreaTopY can be computed from {@link #height} * {@link #plotAreaTopYRatio}
-     */
+    ///
+    ///```
+    ///  ------------------ y=0
+    ///   | plotAreaTopY
+    ///  ------------------ height-plotAreaBottomY-plotAreaHeight = plotAreaTopY: p=1.0
+    ///   |
+    ///   | plotAreaHeight
+    ///   |
+    ///  ------------------ height-plotAreaBottomY: p=0
+    ///   | plotAreaBottomY
+    ///  ------------------ height
+    ///```
+    /// plotAreaTopY can be computed from {@link #height} * {@link #plotAreaTopYRatio}
+    ///
     protected double plotAreaTopY = 100;
     protected double plotAreaBottomY = 100;
 
     protected double plotAreaWidth = 500;
     protected double plotAreaHeight = 500;
 
-    protected Paint plotAreaBackground = Color.white;
+    protected Paint plotAreaBackground = new Color(230, 230, 230);
+    ///stroke for frame lines, grid lines and so on.
     protected Stroke plotStoke = new BasicStroke(1f);
 
     protected Paint plotLinePaint = new Color(0.45f, 0.45f, 0.45f);
@@ -89,19 +88,17 @@ public class Plotter implements PlotterState<Plotter> {
             BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 1f, new float[] {2f, 2f}, 2f);
 
     public interface PlotIndexColor {
-        Color indexColor(int i, int maxColumns);
+        Color indexColor(int columnIndex, int maxColumns);
     }
 
     protected PlotIndexColor plotIndexColor = Plotter::indexColor;
 
     protected Font plotFont;
 
-    /**
-     * <pre>
-     * | &lt;-col1-&gt; &lt;-col2-&gt; &lt;-col3-&gt; | &lt;-col1-&gt; &lt;-col2-&gt; &lt;-col3-&gt; |
-     * | &lt;----------row1----------&gt; | &lt;----------row1----------&gt; |
-     * </pre>
-     */
+    ///```
+    /// | <-col1-> <-col2-> <-col3-> | <-col1-> <-col2-> <-col3-> |
+    /// | <----------row1----------> | <----------row1----------> |
+    ///```
     protected double plotAreaColumnWidth = 15;
     protected double plotAreaRowWidth = 60;
     protected double plotAreaRowMarginX = 5;
@@ -127,6 +124,7 @@ public class Plotter implements PlotterState<Plotter> {
         None,
     }
 
+    ///factory type for {@link Plotter}
     public static class PlotterFactory {
         public Plotter createImage(int width, int height) {
             return new Plotter(width, height);
@@ -151,11 +149,9 @@ public class Plotter implements PlotterState<Plotter> {
         return factory;
     }
 
-    /**
-     * initialize ({@link #initArea()}) with a new image
-     * @param width the width
-     * @param height the height
-     */
+    ///initialize ({@link #initArea()}) with a new image
+    ///@param width the width
+    ///@param height the height
     public Plotter(int width, int height) {
         this.image = createImage(width, height);
         init(image.createGraphics(), width, height);
@@ -165,12 +161,10 @@ public class Plotter implements PlotterState<Plotter> {
         return new BufferedImage(width, height, BufferedImage.TYPE_3BYTE_BGR);
     }
 
-    /**
-     * initialize ({@link #initArea()}) with an image
-     * @param image the image
-     * @param width the width
-     * @param height the height
-     */
+    ///initialize ({@link #initArea()}) with an image
+    ///@param image the image
+    ///@param width the width
+    ///@param height the height
     public Plotter(BufferedImage image, int width, int height) {
         this.image = image;
         init(image.createGraphics(), width, height);
@@ -180,42 +174,34 @@ public class Plotter implements PlotterState<Plotter> {
         return graphics;
     }
 
-    /**
-     * @return image created by {@link #Plotter(int, int)}
-     */
+    ///@return image created by {@link #Plotter(int, int)}
     public BufferedImage endImage() {
         graphics.dispose();
         graphics = null;
         return image;
     }
 
-    /**
-     * initialize ({@link #init(Graphics2D, double, double)}) with a graphics
-     * @param graphics the graphics
-     * @param width the width
-     * @param height the height
-     */
+    ///initialize ({@link #init(Graphics2D, double, double)}) with a graphics
+    ///@param graphics the graphics
+    ///@param width the width
+    ///@param height the height
     public Plotter(Graphics2D graphics, double width, double height) {
         init(graphics, width, height);
     }
 
-    /**
-     * initialize internal state, called from the constructor.
-     *  calling {@link #initArea()}
-     * @param g the graphics context
-     * @param width the width
-     * @param height the height
-     */
+    ///initialize internal state, called from the constructor.
+    /// calling {@link #initArea()}
+    ///@param g the graphics context
+    ///@param width the width
+    ///@param height the height
     public void init(Graphics2D g, double width, double height) {
         this.graphics = g;
         setSize(width, height);
         initArea();
     }
 
-    /**
-     * no initialization of area
-     * @param graphics the graphics
-     */
+    ///no initialization of area
+    ///@param graphics the graphics
     public Plotter(Graphics2D graphics) {
         this.graphics = graphics;
     }
@@ -230,11 +216,9 @@ public class Plotter implements PlotterState<Plotter> {
         return this;
     }
 
-    /**
-     *  set the size by {@link #setWidth(double)} and {@link #setHeight(double)}
-     * @param w the width
-     * @param h the height
-     */
+    /// set the size by {@link #setWidth(double)} and {@link #setHeight(double)}
+    ///@param w the width
+    ///@param h the height
     @Override public Plotter setSize(double w, double h) {
         setWidth(w);
         setHeight(h);
@@ -250,7 +234,9 @@ public class Plotter implements PlotterState<Plotter> {
         this.plotLinePaint = plotLinePaint;
         return this;
     }
-
+    
+    ///set the ratio by {@link #setPlotAreaLeftXRatio(double)} and {@link #setPlotAreaRightXRatio(double)}
+    ///@param plotAreaBaseXRatio the ratio. default is 0.1
     @Override public Plotter setPlotAreaBaseXRatio(double plotAreaBaseXRatio) {
         setPlotAreaLeftXRatio(plotAreaBaseXRatio);
         setPlotAreaRightXRatio(plotAreaBaseXRatio);
@@ -267,6 +253,8 @@ public class Plotter implements PlotterState<Plotter> {
         return this;
     }
 
+    ///set the ratio by {@link #setPlotAreaTopYRatio(double)} and {@link #setPlotAreaBottomYRatio(double)}
+    ///@param plotAreaBaseYRatio the ratio. default is top=0.15 and bottom=0.1
     @Override public Plotter setPlotAreaBaseYRatio(double plotAreaBaseYRatio) {
         setPlotAreaTopYRatio(plotAreaBaseYRatio);
         setPlotAreaBottomYRatio(plotAreaBaseYRatio);
@@ -283,6 +271,7 @@ public class Plotter implements PlotterState<Plotter> {
         return this;
     }
 
+    ///sets the coloring function `(columnIndex, maxColumns) -> Color` ; the default is {@link #indexColor(int, int)}
     @Override public Plotter setPlotIndexColor(PlotIndexColor plotIndexColor) {
         this.plotIndexColor = plotIndexColor;
         return this;
@@ -312,10 +301,8 @@ public class Plotter implements PlotterState<Plotter> {
         return this;
     }
 
-    /**
-     * setting up entire area,
-     * called from {@link #init(Graphics2D, double, double)}
-     */
+    ///setting up entire area,
+    ///called from {@link #init(Graphics2D, double, double)}
     public void initArea() {
         setPlotAreaLeftX(Math.max(width * plotAreaLeftXRatio, 20));
         setPlotAreaRightX(Math.max(width * plotAreaRightXRatio, 20));
@@ -347,6 +334,10 @@ public class Plotter implements PlotterState<Plotter> {
                 .collect(Collectors.toList()));
     }
 
+    /// returns a HSB color with S=0.65, B=0.7 and H= (0.55 + 1/cols * n) mod 1
+    ///@param n a column < cols
+    ///@param cols  columns size
+    ///@return a HSB color
     public static Color indexColor(int n, int cols) {
         float start = 0.55f;
         float h = (1.0f / (float) cols * n) + start;
@@ -356,10 +347,8 @@ public class Plotter implements PlotterState<Plotter> {
         return Color.getHSBColor(h, 0.65f, 0.70f);
     }
 
-    /**
-     * set by {@link #splitArea(int, int)}
-     * @param columnPaints paints for columns
-     */
+    ///set by {@link #splitArea(int, int)}
+    ///@param columnPaints paints for columns
     public void setColumnPaints(List<Paint> columnPaints) {
         this.columnPaints = columnPaints;
     }
@@ -368,23 +357,24 @@ public class Plotter implements PlotterState<Plotter> {
         plotColumnLabels(Arrays.asList(colNames));
     }
 
-    /**
-     * <pre>
-     *   ----------------------------------------- y=0
-     *                          | &lt;-center        plotAreaTopY*0.5
-     *     (startX,startY)----------------------    ^
-     *          |  [ ] l1  |  [ ] l2  |  [ ] l3 |   | plotAreaTopY*0.4
-     *           -------------------------------    v
-     *           &lt;---plotAreaWidth*0.7---------&gt;
-     *   ----------------------------------------- plotAreaTopY
-     *             plot-area
-     * </pre>
-     *
-     * <pre>
-     *                |       [legendBox ]            |label          | ...
-     *     startX=colX        |height*0.5|   colX+colWidth/3         startX+ colWidth=width/columnNames.size()
-     * </pre>
-     */
+    ///　draw column labels  above the plot-area;
+    ///```
+    ///  ----------------------------------------- y=0
+    ///                         | <-center         plotAreaTopY*0.5
+    ///    (startX,startY)----------------------    ^
+    ///         |  [ ] l1  |  [ ] l2  |  [ ] l3 |   | plotAreaTopY*0.4
+    ///          -------------------------------    v
+    ///          <---plotAreaWidth*0.7--------->
+    ///  ----------------------------------------- plotAreaTopY
+    ///            plot-area
+    ///```
+    ///
+    /// the layout of each column label:
+    ///```
+    ///               |       [legendBox ]            |label          | ...
+    ///    startX=colX        |height*0.5|   colX+colWidth/3         startX+ colWidth=width/columnNames.size()
+    ///```
+    /// @param columnNames  the  names of all columns
     public void plotColumnLabels(List<String> columnNames) {
         double width = plotAreaWidth * 0.7;
         double height = Math.max(10, plotAreaTopY * 0.4);
@@ -451,12 +441,10 @@ public class Plotter implements PlotterState<Plotter> {
         graphics.fill(shape);
     }
 
-    /**
-     * plot bar-chart; each plot calls first runs {@link #plotTargetMove()}, if not yet
-     * @param xAxisLabel label for x-axis
-     * @param valueLabel label for y-axis
-     * @param p the value (0..1)
-     */
+    ///plot bar-chart; each plot calls first runs {@link #plotTargetMove()}, if not yet
+    ///@param xAxisLabel label for x-axis
+    ///@param valueLabel label for y-axis
+    ///@param p the value (0..1)
     public void plot(String xAxisLabel, String valueLabel, double p) {
         if (targetNotMovedYet) {
             plotTargetMove();
@@ -512,11 +500,9 @@ public class Plotter implements PlotterState<Plotter> {
         return (float) (height - plotAreaBottomY + layout.getBounds().getHeight() + 5);
     }
 
-    /**
-     * draw horizontal line; the default settings is a dotted-marker line for Y values
-     * @param label label for y-axis
-     * @param p the line Y position (0..1)
-     */
+    ///draw horizontal line; the default settings is a dotted-marker line for Y values
+    ///@param label label for y-axis
+    ///@param p the line Y position (0..1)
     public void plotLineHorizontal(String label, double p) {
         if (p < 0 || p > 1) {
             return;
@@ -552,11 +538,9 @@ public class Plotter implements PlotterState<Plotter> {
         }
     }
 
-    /**
-     * draw vertical line; the default settings is a dotted-marker line for X values
-     * @param label label for x-axis
-     * @param p the line X position (0..1)
-     */
+    ///draw vertical line; the default settings is a dotted-marker line for X values
+    ///@param label label for x-axis
+    ///@param p the line X position (0..1)
     public void plotLineVertical(String label, double p) {
         if (p < 0 || p > 1) {
             return;
@@ -698,10 +682,8 @@ public class Plotter implements PlotterState<Plotter> {
         return rows;
     }
 
-    /**
-     *  set by {@link #splitArea(int, int)}
-     * @param rows the rows
-     */
+    /// set by {@link #splitArea(int, int)}
+    ///@param rows the rows
     public void setRows(int rows) {
         this.rows = rows;
     }
@@ -710,10 +692,8 @@ public class Plotter implements PlotterState<Plotter> {
         return columns;
     }
 
-    /**
-     * set by {@link #splitArea(int, int)}
-     * @param columns the columns within a row
-     */
+    ///set by {@link #splitArea(int, int)}
+    ///@param columns the columns within a row
     public void setColumns(int columns) {
         this.columns = columns;
     }
@@ -738,10 +718,8 @@ public class Plotter implements PlotterState<Plotter> {
         return plotAreaLeftX;
     }
 
-    /**
-     * set by {@link #initArea()}
-     * @param plotAreaLeftX the left margin
-     */
+    ///set by {@link #initArea()}
+    ///@param plotAreaLeftX the left margin
     public void setPlotAreaLeftX(double plotAreaLeftX) {
         this.plotAreaLeftX = plotAreaLeftX;
     }
@@ -750,10 +728,8 @@ public class Plotter implements PlotterState<Plotter> {
         return plotAreaRightX;
     }
 
-    /**
-     * set by {@link #initArea()}
-     * @param plotAreaRightX the right margin
-     */
+    ///set by {@link #initArea()}
+    ///@param plotAreaRightX the right margin
     public void setPlotAreaRightX(double plotAreaRightX) {
         this.plotAreaRightX = plotAreaRightX;
     }
@@ -762,10 +738,8 @@ public class Plotter implements PlotterState<Plotter> {
         return plotAreaTopY;
     }
 
-    /**
-     * set by {@link #initArea()}
-     * @param plotAreaTopY the top margin
-     */
+    ///set by {@link #initArea()}
+    ///@param plotAreaTopY the top margin
     public void setPlotAreaTopY(double plotAreaTopY) {
         this.plotAreaTopY = plotAreaTopY;
     }
@@ -774,10 +748,8 @@ public class Plotter implements PlotterState<Plotter> {
         return plotAreaBottomY;
     }
 
-    /**
-     * set by {@link #initArea()}
-     * @param plotAreaBottomY the bottom margin
-     */
+    ///set by {@link #initArea()}
+    ///@param plotAreaBottomY the bottom margin
     public void setPlotAreaBottomY(double plotAreaBottomY) {
         this.plotAreaBottomY = plotAreaBottomY;
     }
@@ -786,10 +758,8 @@ public class Plotter implements PlotterState<Plotter> {
         return plotAreaWidth;
     }
 
-    /**
-     * set by {@link #initArea()}
-     * @param plotAreaWidth the plot-area width
-     */
+    ///set by {@link #initArea()}
+    ///@param plotAreaWidth the plot-area width
     public void setPlotAreaWidth(double plotAreaWidth) {
         this.plotAreaWidth = plotAreaWidth;
     }
@@ -798,10 +768,8 @@ public class Plotter implements PlotterState<Plotter> {
         return plotAreaHeight;
     }
 
-    /**
-     * set by {@link #initArea()}
-     * @param plotAreaHeight the plot-area height
-     */
+    ///set by {@link #initArea()}
+    ///@param plotAreaHeight the plot-area height
     public void setPlotAreaHeight(double plotAreaHeight) {
         this.plotAreaHeight = plotAreaHeight;
     }
@@ -830,10 +798,8 @@ public class Plotter implements PlotterState<Plotter> {
         return plotAreaColumnWidth;
     }
 
-    /**
-     * set by {@link #splitArea(int, int)}
-     * @param plotAreaColumnWidth the width of each data
-     */
+    ///set by {@link #splitArea(int, int)}
+    ///@param plotAreaColumnWidth the width of each data
     public void setPlotAreaColumnWidth(double plotAreaColumnWidth) {
         this.plotAreaColumnWidth = plotAreaColumnWidth;
     }
@@ -842,10 +808,8 @@ public class Plotter implements PlotterState<Plotter> {
         return plotAreaRowWidth;
     }
 
-    /**
-     * set by {@link #splitArea(int, int)}
-     * @param plotAreaRowWidth the width of each group of data
-     */
+    ///set by {@link #splitArea(int, int)}
+    ///@param plotAreaRowWidth the width of each group of data
     public void setPlotAreaRowWidth(double plotAreaRowWidth) {
         this.plotAreaRowWidth = plotAreaRowWidth;
     }
@@ -854,10 +818,8 @@ public class Plotter implements PlotterState<Plotter> {
         return plotAreaRowMarginX;
     }
 
-    /**
-     * set by {@link #splitArea(int, int)}
-     * @param plotAreaRowMarginX the x margin of group of data
-     */
+    ///set by {@link #splitArea(int, int)}
+    ///@param plotAreaRowMarginX the x margin of group of data
     public void setPlotAreaRowMarginX(double plotAreaRowMarginX) {
         this.plotAreaRowMarginX = plotAreaRowMarginX;
     }

@@ -9,9 +9,15 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.concurrent.atomic.AtomicLong;
 
-///printing utility of plotters {@link PlotterPrintable}
+///printing utility of plotters implementing {@link PlotterPrintable}
+///```java
+///  PlotterPrint print = new PlotterPrint();
+///  PlotterForMatrix p = ...;
+///  print.print(p);
+/// ```
 public class PlotterPrint {
     protected static AtomicLong count = new AtomicLong();
+    /*
     protected boolean showPageDialog = true;
 
     public void setShowPageDialog(boolean showPageDialog) {
@@ -20,7 +26,7 @@ public class PlotterPrint {
 
     public boolean isShowPageDialog() {
         return showPageDialog;
-    }
+    }*/
 
     public void print(PlotterPrintable plot) {
         try {

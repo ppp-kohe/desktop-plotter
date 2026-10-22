@@ -12,9 +12,12 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
+///a Swing component for {@link PlotterForMatrix};
+///  it observes property changes of teh plotter and updates painting by those changes.
 public class PlotterPane extends JPanel implements PlotterForMatrix.PlotterForMatrixObserver {
     protected PlotterForMatrix plotter;
     protected JPopupMenu menu;
+    protected boolean usingPaneColor;
 
     public PlotterPane() {
         PlotterForMatrix plotter = new PlotterForMatrix();
@@ -57,6 +60,14 @@ public class PlotterPane extends JPanel implements PlotterForMatrix.PlotterForMa
         menu.add(new PlotPrintAction(this));
     }
 
+    public void setUsingPaneColor(boolean usingPaneColor) {
+        this.usingPaneColor = usingPaneColor;
+    }
+
+    public boolean isUsingPaneColor() {
+        return usingPaneColor;
+    }
+
     public void setPlotter(PlotterForMatrix plotter) {
         boolean eq = Objects.equals(this.plotter, plotter);
         PlotterForMatrix oldPlotter = this.plotter;
@@ -78,6 +89,12 @@ public class PlotterPane extends JPanel implements PlotterForMatrix.PlotterForMa
     @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
+        Color foreground = getForeground();
+        Color background = getBackground();
+        if (usingPaneColor && foreground != null && background != null) {
+            plotter.setPlotAreaBackground(background);
+            plotter.setPlotLinePaint(foreground);
+        }
         plotter.setSize(getWidth(), getHeight());
         plotter.plot((Graphics2D) g);
     }

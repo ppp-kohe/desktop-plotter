@@ -3,6 +3,7 @@ package org.autogui.plot;
 import org.autogui.plot.data.PlotterLists;
 
 import javax.imageio.ImageIO;
+import javax.swing.*;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
@@ -11,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -18,9 +20,17 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-///
+///plotter for matrix data
+///```
+/// rowLabel,  column1Label,   column2Label,   column3Label, ....
+/// row1Label, column1_1Data,  column1_2Data,  column1_3Data, ...
+/// row2Label, column2_1Data,  column2_2Data,  column2_3Data, ...
+/// ...
+///```
+/// The row 0 is the header; it has labels of columns.
+/// The column 0 is the row-header; it has labels of rows.
 ///```java
-///     PlotterForMatrix p = new PlotterForMatrix();
+///     PlotterForMatrix p = PlotterForMatrix.create();
 ///     p.setData(data, true, true); //data: [ ["head", "col1", "col2",...], ["headRow1", c1, c2, ...], ...]
 ///     p.setMaxValue(1000);
 ///     p.saveCsv(filePath);
@@ -42,6 +52,12 @@ public class PlotterForMatrix implements PlotterState<PlotterForMatrix>, Plotter
 
     protected Plotter.PlotterFactory factory = PlotMode.Bar.factory();
 
+    ///initializers for {@link Plotter}:
+    ///The class saves `set...` calls with parameters as consumers of the plotter object.
+    /// The key will be the `set...` method name as is.
+    ///
+    ///In this class, the plot rendering is realized by a {@link Plotter} instance and
+    /// settings the properties for the plotter will be done by the saved consumers.
     protected Map<String, Consumer<Plotter>> inits = new LinkedHashMap<>();
 
     protected String title;
@@ -50,30 +66,27 @@ public class PlotterForMatrix implements PlotterState<PlotterForMatrix>, Plotter
     protected boolean valueLabel;
     protected boolean xGridLine;
 
+    ///observers of property changes: only if the field of the property is defined in the class,
+    /// and the changing property value differs from the previous value by {@link Objects#equals(Object, Object)};
+    ///   Only the `data` property is compared by `==`
     protected List<PlotterForMatrixObserver> observers = new ArrayList<>(1);
 
     protected PlotMode mode = PlotMode.Bar;
 
+    public static PlotterForMatrix create() {
+        return new PlotterForMatrix();
+    }
+
     public enum PlotMode {
-        /**
-         * bar-chart: each column of each row become a bar, grouped by the row
-         */
+        ///bar-chart: each column of each row become a bar, grouped by the row
         Bar(false, false, false),
-        /**
-         * point-plotting: each data in a row aligns with a same x-grid. rows construct x-grids at regular intervals.
-         */
+        ///point-plotting: each data in a row aligns with a same x-grid. rows construct x-grids at regular intervals.
         Point(true, false, false),
-        /**
-         * line-chart: plotting points same as {@link #Point} with connecting lines of the points for each columns
-         */
+        ///line-chart: plotting points same as {@link #Point} with connecting lines of the points for each column
         Line(true, true, false),
-        /**
-         * scatter-plot: data becomes (x,y) columns (2n columns), and plot points by the x and y locations
-         */
+        ///scatter-plot: data becomes (x,y) columns (2n columns), and plot points by the x and y locations
         Scatter(true, false, true),
-        /**
-         * scatter-plot with lines: plotting points same as {@link #Scatter} with connecting lines of the points for each columns
-         */
+        ///scatter-plot with lines: plotting points same as {@link #Scatter} with connecting lines of the points for each column
         ScatterLine(true, true, true);
 
         protected final boolean scatter;
@@ -98,30 +111,26 @@ public class PlotterForMatrix implements PlotterState<PlotterForMatrix>, Plotter
             return line;
         }
 
-        /**
-         * if true,
-         *   the data must be
-         *   <pre>
-         *       {r1c1x, r1c1y, r1c2x, r1c2y, ...},
-         *       {r2c1x, r2c1y, r2c2x, r1c2y, ...},
-         *       ...
-         *   </pre>
-         *    , and scatter points are
-         *        (r1c1x, r1c1y), (r2c1x, r2c1y), ... and
-         *        (r1c2x, r2c2y), (r2c2x, r2c2y), ...
-         * @return scatter mode
-         */
+        ///if true,
+        ///  the data must be
+        /// ```
+        ///      {r1c1x, r1c1y, r1c2x, r1c2y, ...},
+        ///      {r2c1x, r2c1y, r2c2x, r1c2y, ...},
+        ///      ...
+        ///```
+        ///   , and scatter points are
+        ///       (r1c1x, r1c1y), (r2c1x, r2c1y), ... and
+        ///       (r1c2x, r2c2y), (r2c2x, r2c2y), ...
+        ///@return scatter mode
         public boolean isScatter() {
             return scatter;
         }
     }
 
-    /**
-     * set the mode of chart. The default value {@link PlotMode#Bar}.
-     *  It also sets an appropriate factory for the mode by {@link #setFactory(Plotter.PlotterFactory)}
-     * @param mode the mode
-     * @return this
-     */
+    ///set the mode of chart. The default value {@link PlotMode#Bar}.
+    /// It also sets an appropriate factory for the mode by {@link #setFactory(Plotter.PlotterFactory)}
+    ///@param mode the mode
+    ///@return this
     public PlotterForMatrix setMode(PlotMode mode) {
         boolean eq = Objects.equals(this.mode, mode);
         this.mode = mode;
@@ -132,12 +141,10 @@ public class PlotterForMatrix implements PlotterState<PlotterForMatrix>, Plotter
         return this;
     }
 
-    /**
-     *  set both width and height by {@link #setWidth(double)} and {@link #setHeight(double)}
-     * @param width the width
-     * @param height the height
-     * @return this
-     */
+    /// set both width and height by {@link #setWidth(double)} and {@link #setHeight(double)}
+    ///@param width the width
+    ///@param height the height
+    ///@return this
     public PlotterForMatrix setSize(double width, double height) {
         setWidth(width);
         setHeight(height);
@@ -164,15 +171,13 @@ public class PlotterForMatrix implements PlotterState<PlotterForMatrix>, Plotter
         return this;
     }
 
-    /**
-     * set the plotting data; immediately constructing a matrix data by combining the data, the headerRow and the headerColumn.
-     * @param data a matrix consisting of {@link Number} or {@link String} of double representation.
-     *               { {row1_col1, row1_col2, ...}, {row2_col1, row2_col2, ...}, ...}
-     * @param headerRow labels of rows, whose size must be the same size of columns, or null meaning no labels
-     * @param headerColumn labels of columns (a series of values), whose size must be the same size of rows (data.size()),
-     *                      or null meaning no labels
-     * @return this
-     */
+    ///set the plotting data; immediately constructing a matrix data by combining the data, the headerRow and the headerColumn.
+    ///@param data a matrix consisting of {@link Number} or {@link String} of double representation.
+    ///              `{ {row1_col1, row1_col2, ...}, {row2_col1, row2_col2, ...}, ...}`
+    ///@param headerRow labels of rows, whose size must be the same size of columns, or null meaning no labels
+    ///@param headerColumn labels of columns (a series of values), whose size must be the same size of rows (data.size()),
+    ///                     or null meaning no labels
+    ///@return this
     public <E,H> PlotterForMatrix setData(List<List<E>> data, List<H> headerRow, List<H> headerColumn) {
         setData(dataWithHeader(data, headerRow, headerColumn),
                 headerRow != null, headerColumn != null);
@@ -210,22 +215,20 @@ public class PlotterForMatrix implements PlotterState<PlotterForMatrix>, Plotter
         return newData;
     }
 
-    /**
-     * set the plotting data
-     * @param data a matrix consisting of {@link Number} or {@link String} of double representation;
-     *              { {row1_col1, row1_col2, ...}, {row2_col1, row2_col2, ...}, ...}
-     * @param topRowIsLabel if true, it regards the top of data  as the headerRow, and thus the row index of data shifts;
-     *                         { {headerRow_col1, headerRow_col2, ...}, {row1_col1, row1_col2, ...}, ...}
-     * @param topColumnIsLabel if true, it regards the top of each row as headerColumn, and thus the column index of data shifts;
-     *                         { {row1_headerCol, row1_col1, row1_col2, ...}, {row2_headerCol, row2_col1, row2_col2, ...}, ...}.
-     *                         <p>
-     *                         Note; if both topRowIsLabel and topColumnIsLabel are true,
-     *                         then both indices of row and column shift,
-     *                         and the top element of the data (data.get(0).get(0)) will be ignored;
-     *                           { {"", headerRow_col1, header_col2, ...}, {row1_headerCol, row1_col1, row1_col2, ...}, ...}
-     *                         </p>
-     * @return this
-     */
+    ///set the plotting data
+    ///@param data a matrix consisting of {@link Number} or {@link String} of double number representation;
+    ///             `{ {row1_col1, row1_col2, ...}, {row2_col1, row2_col2, ...}, ...}`
+    ///@param topRowIsLabel if true, it regards the top of data  as the headerRow, and thus the row index of data shifts;
+    ///                        `{ {headerRow_col1, headerRow_col2, ...}, {row1_col1, row1_col2, ...}, ...}`
+    ///@param topColumnIsLabel if true, it regards the top of each row as headerColumn, and thus the column index of data shifts;
+    ///                        `{ {row1_headerCol, row1_col1, row1_col2, ...}, {row2_headerCol, row2_col1, row2_col2, ...}, ...}`.
+    ///
+    ///                        Note; if both topRowIsLabel and topColumnIsLabel are true,
+    ///                        then both indices of row and column shift,
+    ///                        and the top element of the data (`data.get(0).get(0)`) will be ignored;
+    ///                          `{ {"", headerRow_col1, header_col2, ...}, {row1_headerCol, row1_col1, row1_col2, ...}, ...}`
+    ///
+    ///@return this
     public <E> PlotterForMatrix setData(List<List<E>> data, boolean topRowIsLabel, boolean topColumnIsLabel) {
         setData(data);
         setTopColumnIsLabel(topColumnIsLabel);
@@ -233,17 +236,15 @@ public class PlotterForMatrix implements PlotterState<PlotterForMatrix>, Plotter
         return this;
     }
 
-    /**
-     * set the plotting data
-     * @param data a matrix consisting of {@link Number} or {@link String} of double representation;
-     *                    { {row1_col1, row1_col2, ...}, {row2_col1, row2_col2, ...}, ...}.
-     *             <p>
-     *             Flags of {@link #isTopColumnIsLabel()} and {@link #isTopRowIsLabel()} determines
-     *                whether the top row and/or column are labels or not. This will cause shift of indices.
-     *             (Defaults are false.)
-     *             </p>
-     * @return this
-     */
+    ///set the plotting data
+    ///@param data a matrix consisting of {@link Number} or {@link String} of double representation;
+    ///                   `{ {row1_col1, row1_col2, ...}, {row2_col1, row2_col2, ...}, ...}`.
+    ///
+    ///            Flags of {@link #isTopColumnIsLabel()} and {@link #isTopRowIsLabel()} determines
+    ///               whether the top row and/or column are labels or not. This will cause shift of indices.
+    ///            (Defaults are false.)
+    ///
+    ///@return this
     @SuppressWarnings("all")
     public <E> PlotterForMatrix setData(List<List<E>> data) {
         boolean eq = (((Object)this.data) == (Object) data);
@@ -270,6 +271,8 @@ public class PlotterForMatrix implements PlotterState<PlotterForMatrix>, Plotter
     }
 
     public interface PlotterForMatrixObserver {
+        ///@param p  the target object
+        ///@param name  the property name
         void plotterForMatrixChanged(PlotterForMatrix p, String name);
     }
 
@@ -291,23 +294,19 @@ public class PlotterForMatrix implements PlotterState<PlotterForMatrix>, Plotter
         return this;
     }
 
-    /**
-     * set both minValue and maxValue by {@link #setMinValue(double)} and {@link #setMaxValue(double)}.
-     *  The default values are NaN, meaning automatically obtaining the min or max value from data.
-     * @param minValue max value of y for non-scatter plot, or max value of x for scatter plot
-     * @param maxValue min value of y for non-scatter plot, or min value of x for scatter plot
-     * @return this
-     */
+    ///set both minValue and maxValue by {@link #setMinValue(double)} and {@link #setMaxValue(double)}.
+    /// The default values are NaN, meaning automatically obtaining the min or max value from data.
+    ///@param minValue max value of y for non-scatter plot, or max value of x for scatter plot
+    ///@param maxValue min value of y for non-scatter plot, or min value of x for scatter plot
+    ///@return this
     public PlotterForMatrix setMinMaxValues(double minValue, double maxValue) {
         setMinValue(minValue);
         setMaxValue(maxValue);
         return this;
     }
 
-    /**
-     * @param maxValue max value of y for non-scatter plot, or max value of x for scatter plot
-     * @return this
-     */
+    ///@param maxValue max value of y for non-scatter plot, or max value of x for scatter plot
+    ///@return this
     public PlotterForMatrix setMaxValue(double maxValue) {
         boolean eq = Objects.equals(this.minMaxValues[1], maxValue);
         minMaxValues[1] = maxValue;
@@ -317,10 +316,8 @@ public class PlotterForMatrix implements PlotterState<PlotterForMatrix>, Plotter
         return this;
     }
 
-    /**
-     * @param minValue min value of y for non-scatter plot, or min value of x for scatter plot
-     * @return this
-     */
+    ///@param minValue min value of y for non-scatter plot, or min value of x for scatter plot
+    ///@return this
     public PlotterForMatrix setMinValue(double minValue) {
         boolean eq = Objects.equals(this.minMaxValues[0], minValue);
         minMaxValues[0] = minValue;
@@ -331,23 +328,19 @@ public class PlotterForMatrix implements PlotterState<PlotterForMatrix>, Plotter
     }
 
 
-    /**
-     * set both minValue and maxValue for y of scatter plot by {@link #setMinValueScatterY(double)} and {@link #setMaxValueScatterY(double)} .
-     *  The default values are NaN, meaning automatically obtaining the min or max value from data.
-     * @param minValue the min value of y for scatter plot
-     * @param maxValue the max value of y for scatter plot
-     * @return this
-     */
+    ///set both minValue and maxValue for y of scatter plot by {@link #setMinValueScatterY(double)} and {@link #setMaxValueScatterY(double)} .
+    /// The default values are NaN, meaning automatically obtaining the min or max value from data.
+    ///@param minValue the min value of y for scatter plot
+    ///@param maxValue the max value of y for scatter plot
+    ///@return this
     public PlotterForMatrix setMinMaxValuesForScatterY(double minValue, double maxValue) {
         setMinValueScatterY(minValue);
         setMaxValueScatterY(maxValue);
         return this;
     }
 
-    /**
-     * @param maxValue max value of y for scatter plot
-     * @return this
-     */
+    ///@param maxValue max value of y for scatter plot
+    ///@return this
     public PlotterForMatrix setMaxValueScatterY(double maxValue) {
         boolean eq = Objects.equals(this.minMaxValues[2], maxValue);
         minMaxValues[2] = maxValue;
@@ -357,10 +350,8 @@ public class PlotterForMatrix implements PlotterState<PlotterForMatrix>, Plotter
         return this;
     }
 
-    /**
-     * @param minValue max value of y for scatter plot
-     * @return this
-     */
+    ///@param minValue max value of y for scatter plot
+    ///@return this
     public PlotterForMatrix setMinValueScatterY(double minValue) {
         boolean eq = Objects.equals(this.minMaxValues[3], minValue);
         minMaxValues[3] = minValue;
@@ -370,10 +361,8 @@ public class PlotterForMatrix implements PlotterState<PlotterForMatrix>, Plotter
         return this;
     }
 
-    /**
-     * @param logarithm if true, use log-scaling. The default value is false
-     * @return this
-     */
+    ///@param logarithm if true, use log-scaling. The default value is false
+    ///@return this
     public PlotterForMatrix setLogarithm(boolean logarithm) {
         boolean eq = Objects.equals(this.logarithm, logarithm);
         this.logarithm = logarithm;
@@ -523,11 +512,9 @@ public class PlotterForMatrix implements PlotterState<PlotterForMatrix>, Plotter
 
     //----------- main processes
 
-    /**
-     * write data to CSV file
-     * @param path the saved file path
-     * @return this
-     */
+    ///write data to CSV file
+    ///@param path the saved file path
+    ///@return this
     public PlotterForMatrix saveCsv(Path path) {
         try (Writer w = Files.newBufferedWriter(path)) {
             saveCsv(w);
@@ -579,11 +566,9 @@ public class PlotterForMatrix implements PlotterState<PlotterForMatrix>, Plotter
         }
     }
 
-    /**
-     * write plot image as a .png file
-     * @param path the saved image file path
-     * @return this
-     */
+    ///write plot image as a .png file
+    ///@param path the saved image file path
+    ///@return this
     public PlotterForMatrix savePlot(Path path) {
         try {
             ImageIO.write(plot(), "png", path.toFile());
@@ -593,45 +578,64 @@ public class PlotterForMatrix implements PlotterState<PlotterForMatrix>, Plotter
         return this;
     }
 
-    /**
-     * plots and returns as an image
-     * @return a created image.
-     */
+    ///plots and returns as an image
+    ///@return a created image.
     public BufferedImage plot() {
         BufferedImage image = Plotter.createImage((int) width, (int) height);
         Plotter plotter = factory.create(image.createGraphics());
 
-        plot(plotter);
+        plot(plotter, false);
 
         plotter.getGraphics().dispose();
         return image;
     }
 
-    /**
-     * shows page and print dialogs and prints the plot, by {@link PlotterPrint}
-     * @return this
-     */
+    ///shows page and print dialogs and prints the plot, by {@link PlotterPrint}
+    ///@return this
     public PlotterForMatrix print() {
         new PlotterPrint().print(this);
         return this;
     }
 
+    ///creates and shows a window for displaying the plot
+    ///
+    /// if the caller is not the event dispatching thread, it awaits creation of the window in the event dispatching thread.
+    public JFrame displayPlot() {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            try {
+                AtomicReference<JFrame> ref = new AtomicReference<>();
+                SwingUtilities.invokeAndWait(() -> {
+                    var frame = displayPlot();
+                    ref.set(frame);
+                });
+                return ref.get();
+            } catch (Exception ex) {
+                throw new RuntimeException(ex);
+            }
+        } else {
+            JFrame frame = new JFrame();
+            frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+            frame.setContentPane(new PlotterPane(this));
+            frame.pack();
+            frame.setVisible(true);
+            return frame;
+        }
+    }
+
     @Override
     public void print(Graphics2D g) {
-        plot(g);
+        plot(factory.create(g), true);
     }
 
-    /**
-     * plots data with a given context
-     * @param g the graphics context
-     * @return the created plotter object
-     */
+    ///plots data with a given context
+    ///@param g the graphics context
+    ///@return the created plotter object
     public Plotter plot(Graphics2D g) {
-        return plot(factory.create(g));
+        return plot(factory.create(g), false);
     }
 
-    public Plotter plot(Plotter plotter) {
-        plotInit(plotter);
+    public Plotter plot(Plotter plotter, boolean print) {
+        plotInit(plotter, print);
 
         int[] size = getDataSize();
         int rows = size[0];
@@ -655,14 +659,21 @@ public class PlotterForMatrix implements PlotterState<PlotterForMatrix>, Plotter
         return plotter;
     }
 
-    protected void plotInit(Plotter plotter) {
+    protected void plotInit(Plotter plotter, boolean print) {
         if (mode.isLine() && plotter instanceof PlotterPoints) {
             ((PlotterPoints) plotter).setPlotIndexShapeForLine();
         }
         inits.values().forEach(c ->
                 c.accept(plotter));
+        if (print) {
+            protInitPrint(plotter);
+        }
         plotter.initArea();
         plotter.plotAreaBackground();
+    }
+
+    protected void protInitPrint(Plotter plotter) {
+        plotter.setPlotPrintForPrint();
     }
 
     protected void plotArea(Plotter plotter, int rows, int cols, List<String> columnLabels) {

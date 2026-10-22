@@ -1,9 +1,12 @@
 package org.autogui.plot.test.data;
 
 import org.autogui.plot.data.PlotterDataBuilder;
+import org.autogui.plot.data.PlotterDataReducer;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 public class PlotterDataBuilderTest {
@@ -26,7 +29,7 @@ public class PlotterDataBuilderTest {
         var res = d.run(data);
         System.err.println(res);
         Assertions.assertEquals(
-                List.of(List.of("", "0"), //header :
+                List.of(List.of("", "[0]"), //header :
                         List.of("1", "100"),
                         List.of("2", "200"),
                         List.of("3", "300")), res,
@@ -161,10 +164,10 @@ public class PlotterDataBuilderTest {
         System.err.println(res);
         Assertions.assertEquals(
                 List.of(List.of("", "X"), //header :
-                        List.of("0", "100"),
-                        List.of("1", "200"),
-                        List.of("2", "300"),
-                        List.of("3", "400")), res,
+                        List.of("[0]", "100"),
+                        List.of("[1]", "200"),
+                        List.of("[2]", "300"),
+                        List.of("[3]", "400")), res,
                 "translate columns and rows");
     }
 
@@ -186,11 +189,11 @@ public class PlotterDataBuilderTest {
                 .selectData()
                     .lineNotTop()
                     .takeFieldName("x").value()
-                        .lineIndexAsRowLabel().<Integer>rowLabelConvert(i -> Integer.toString(i * 2 - 1))
+                        .lineIndexAsRowLabel().<Long>rowLabelConvert(i -> Long.toString(i * 2L - 1L))
                         .columnLabel("X")
                     .endTake()
                     .takeFieldName("y").value()
-                        .lineIndexAsRowLabel().<Integer>rowLabelConvert(i -> Integer.toString(i * 2))
+                        .lineIndexAsRowLabel().<Long>rowLabelConvert(i -> Long.toString(i * 2L))
                         .columnLabel("X")
                     .endTake()
                 .endSelect();
@@ -239,14 +242,14 @@ public class PlotterDataBuilderTest {
         System.err.println(res);
         Assertions.assertEquals(
                 List.of(List.of("", "X"), //header :
-                        List.of("1.0", "100"),
-                        List.of("1.1", "1000"),
-                        List.of("2.0", "200"),
-                        List.of("2.1", "2000"),
-                        List.of("3.0", "300"),
-                        List.of("3.1", "3000"),
-                        List.of("4.0", "400"),
-                        List.of("4.1", "4000")), res,
+                        List.of("1.[0]", "100"),
+                        List.of("1.[1]", "1000"),
+                        List.of("2.[0]", "200"),
+                        List.of("2.[1]", "2000"),
+                        List.of("3.[0]", "300"),
+                        List.of("3.[1]", "3000"),
+                        List.of("4.[0]", "400"),
+                        List.of("4.[1]", "4000")), res,
                 "serialize 2 fields to 1 column");
     }
 
@@ -316,8 +319,8 @@ public class PlotterDataBuilderTest {
                     .lineNotTop() //limits the data part
                     .takeFieldName("hello").value()
                     .endTake() //field[0] "hello"
-                    .takeFieldName("flag").valueOccurrences().asRowLabel()
-                    .takeFieldName("flag").asColumnLabel()
+                    .takeFieldName("flag").valueOccurrences().asRowLabel().endTake()
+                    .takeFieldName("flag").asColumnLabel().endTake()
                 .endSelect();
         var res = d.run(data);
         System.err.println(res);
@@ -349,8 +352,8 @@ public class PlotterDataBuilderTest {
                     .lineNotTop()
                     .takeFieldNameAsList("hello").value()
                     .endTake()
-                    .takeFieldNameAsList("flag").valueOccurrences().asRowLabel()
-                    .takeFieldNameAsList("flag").asColumnLabel()
+                    .takeFieldNameAsList("flag").valueOccurrences().asRowLabel().endTake()
+                    .takeFieldNameAsList("flag").asColumnLabel().endTake()
                 .endSelect();
         var res = d.run(data);
         System.err.println(res);
@@ -383,8 +386,8 @@ public class PlotterDataBuilderTest {
                     .lineNotTop()
                     .takeFieldName("hello").value().fieldNameOrIndexAsColumnLabel().endTake()
                     .takeFieldName("world").value().fieldNameOrIndexAsColumnLabel().endTake()
-                    .takeFieldName("flag1").asRowLabel()
-                    .takeFieldName("flag2").asColumnLabel((l,v) -> l + "." + v)
+                    .takeFieldName("flag1").asRowLabel().endTake()
+                    .takeFieldName("flag2").asColumnLabel().labelCombine((l, v) -> l + "." + v).endTake()
                 .endSelect();
         var res = d.run(data);
         System.err.println(res);
@@ -395,5 +398,91 @@ public class PlotterDataBuilderTest {
                         List.of("b", "500", "50", "400", "40")
                 ), res,
                 "");
+    }
+
+    @Test
+    public void testReducer() {
+        var data = List.<List<Object>>of(
+                List.of("date", "price"),
+                List.of("2000-01-01", "10"),
+                List.of("2000-01-02", "20"),
+                List.of("2000-01-03", "30"),
+                List.of("2000-01-04", "40"),
+                List.of("2000-01-05", "50"),
+                List.of("2000-01-06", "60"),
+                List.of("2000-01-07", "70"),
+                List.of("2000-01-08", "80"), //reduce [10, 20], [30, 40], [50, 60], [70, 80] -> [15:2], [35:2], [55:2], [75:2]
+                List.of("2000-01-09", "90"),
+                List.of("2000-01-10", "100"),
+                List.of("2000-01-11", "110"),
+                List.of("2000-01-12", "120"),
+                List.of("2000-01-13", "130")  //reduce [15:2, 35:2] , [55:2, 75:2], [90, 100], [110, 120] -> [7.5+17.5=25:4], [27.5+37.5=65:4], [95:2], [115:2]
+        );
+
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+        var d = PlotterDataBuilder.create()
+                .selectHeader()
+                    .lineTop()
+                    .bindFieldIndexContains("date", "date")
+                    .bindFieldIndexContains("price", "price")
+                .endSelect()
+                .selectData()
+                    .lineNotTop()
+                    .takeFieldName("date").<String>asRowLabel(s -> LocalDate.parse(s, fmt)).endTake()
+                    .takeFieldName("price").value(Double::parseDouble).fieldNameOrIndexAsColumnLabel().endTake()
+                .endSelect()
+                .withReduce(4, 8);
+        var res = d.run(data);
+        System.err.println(res);
+
+        Assertions.assertEquals(6, res.size(), "rowSize");
+        Assertions.assertEquals(3, res.getColumnSize(), "columnSize");
+
+        Assertions.assertEquals(List.of("date", "price", "#RowCount"), res.getFirst(), "header");
+
+        var r = res.get(1);
+        Assertions.assertEquals(LocalDate.of(2000,1,1).toString(), r.get(0), "date");
+        Assertions.assertEquals( 25.0, r.get(1), "price");
+        Assertions.assertEquals(4L, r.get(2), "count");
+        r = res.get(2);
+        Assertions.assertEquals(LocalDate.of(2000,1,5).toString(), r.get(0), "date");
+        Assertions.assertEquals( 65.0, r.get(1), "price");
+        Assertions.assertEquals(4L, r.get(2), "count");
+        r = res.get(3);
+        Assertions.assertEquals(LocalDate.of(2000,1,9).toString(), r.get(0), "date");
+        Assertions.assertEquals( 95.0, r.get(1), "price");
+        Assertions.assertEquals(2L, r.get(2), "count");
+        r = res.get(4);
+        Assertions.assertEquals(LocalDate.of(2000,1,11).toString(), r.get(0), "date");
+        Assertions.assertEquals( 115.0, r.get(1), "price");
+        Assertions.assertEquals(2L, r.get(2), "count");
+        r = res.get(5);
+        Assertions.assertEquals(LocalDate.of(2000,1,13).toString(), r.get(0), "date");
+        Assertions.assertEquals( 130.0, r.get(1), "price");
+        Assertions.assertEquals(1L, r.get(2), "count");
+
+        var resNoCount = res.filteredColumns(PlotterDataReducer.excludeRowCountColumnByHeaderName(res));
+        System.err.println(resNoCount);
+
+        Assertions.assertEquals(6, resNoCount.size(), "rowSize");
+        Assertions.assertEquals(2, resNoCount.getFirst().size(), "columnSize");
+
+        Assertions.assertEquals(List.of("date", "price"), resNoCount.getFirst(), "header");
+
+        r = resNoCount.get(1);
+        Assertions.assertEquals(LocalDate.of(2000,1,1).toString(), r.get(0), "date");
+        Assertions.assertEquals( 25.0, r.get(1), "price");
+        r = resNoCount.get(2);
+        Assertions.assertEquals(LocalDate.of(2000,1,5).toString(), r.get(0), "date");
+        Assertions.assertEquals( 65.0, r.get(1), "price");
+        r = resNoCount.get(3);
+        Assertions.assertEquals(LocalDate.of(2000,1,9).toString(), r.get(0), "date");
+        Assertions.assertEquals( 95.0, r.get(1), "price");
+        r = resNoCount.get(4);
+        Assertions.assertEquals(LocalDate.of(2000,1,11).toString(), r.get(0), "date");
+        Assertions.assertEquals( 115.0, r.get(1), "price");
+        r = resNoCount.get(5);
+        Assertions.assertEquals(LocalDate.of(2000,1,13).toString(), r.get(0), "date");
+        Assertions.assertEquals( 130.0, r.get(1), "price");
     }
 }

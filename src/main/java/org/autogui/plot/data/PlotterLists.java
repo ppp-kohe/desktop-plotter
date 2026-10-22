@@ -2,8 +2,11 @@ package org.autogui.plot.data;
 
 import java.util.AbstractList;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.BiFunction;
+import java.util.function.IntPredicate;
+import java.util.stream.IntStream;
 
 public class PlotterLists {
 
@@ -323,6 +326,56 @@ public class PlotterLists {
                 return true;
             }
             return super.equals(o);
+        }
+    }
+
+    public static <E> FilteredList<E> filteredExclude(List<E> list, int... excluded) {
+        Arrays.sort(excluded);
+        return new FilteredList<>(list, IntStream.range(0, list.size())
+                .filter(index -> Arrays.binarySearch(excluded, index) < 0)
+                .toArray());
+    }
+
+    public static <E> FilteredList<E> filteredInclude(List<E> list, int... included) {
+        Arrays.sort(included);
+        if (included.length > list.size()) {
+            included = Arrays.copyOf(included, list.size());
+        }
+        for (int i = 1, l = included.length; i < l; ++i) {
+            if (included[i - 1] == included[i]) { //has duplication
+                included = Arrays.stream(included)
+                        .distinct()
+                        .toArray();
+                break;
+            }
+        }
+        return new FilteredList<>(list, included);
+    }
+
+    public static <E> FilteredList<E> filteredInclude(List<E> list, IntPredicate included) {
+        return new FilteredList<>(list, IntStream.range(0, list.size())
+                .filter(included)
+                .toArray());
+    }
+
+
+    public static class FilteredList<E> extends AbstractList<E> {
+        protected List<E> data;
+        protected int[] included;
+
+        public FilteredList(List<E> data, int[] included) {
+            this.data = data;
+            this.included = included; //no duplication, ordered, index.length <= data.size()
+        }
+
+        @Override
+        public int size() {
+            return included.length;
+        }
+
+        @Override
+        public E get(int index) {
+            return data.get(included[index]);
         }
     }
 }

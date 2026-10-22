@@ -6,7 +6,10 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Function;
+import java.util.function.IntPredicate;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 ///row and column matrix data utility;
 ///* an implementation class of {@link List}`<List<Object>>`
@@ -14,11 +17,10 @@ import java.util.stream.Collectors;
 ///   {@link #add(List)}, {@link #add(int, List)}, {@link #setCell(int, int, Object)} ,
 ///   {@link #addCell(int, int, Object)}, {@link #fillCell(int, int, Object)}, and so on.
 /// Also, {@link #getRow(int)} expands rows.
-///* if the specified index is over rows and columns sizes, returns 0 ({@link #getZero()});
+///* if the specified index is over rows and columns sizes, returns 0.0 ({@link #getZero()});
 ///* {@link PlotterDataColumn} can manipulate column data at once.
 public class PlotterData extends AbstractList<List<Object>> {
     protected ArrayList<List<Object>> data;
-    protected ArrayList<PlotterDataColumn> columns;
     protected int columnSize;
 
     public static PlotterData create() {
@@ -31,12 +33,14 @@ public class PlotterData extends AbstractList<List<Object>> {
 
     public PlotterData() {
         data = new ArrayList<>();
-        columns = new ArrayList<>();
     }
 
     public PlotterData(int capacity) {
         data = new ArrayList<>(capacity);
-        columns = new ArrayList<>(capacity);
+    }
+
+    protected PlotterData(ArrayList<List<Object>> data) {
+        this.data = data;
     }
 
     @Override
@@ -59,10 +63,13 @@ public class PlotterData extends AbstractList<List<Object>> {
     public void add(int index, List<Object> element) {
         updateColumnSize(element);
         data.add(index, element);
-        columns.stream()
-                .filter(c -> c.getRowIndex() >= index)
-                .forEach(PlotterDataColumn::shiftRowIndex);
+    }
 
+    @Override
+    public List<Object> set(int index, List<Object> element) {
+        var v = data.set(index, element);
+        updateColumnSize(element);
+        return v;
     }
 
     protected void updateColumnSize(List<Object> es) {
@@ -88,14 +95,14 @@ public class PlotterData extends AbstractList<List<Object>> {
         for (int r = getRowSize(); r <= row; ++r) {
             data.add(new ArrayList<>(cols));
         }
-        return data.get(row);
+        return get(row);
     }
 
     public Object getCell(int row, int col) {
         if (row >= data.size()) {
             return getZero();
         } else {
-            List<Object> rowList = data.get(row);
+            List<Object> rowList = get(row);
             if (col >= rowList.size()) {
                 return getZero();
             } else {
@@ -134,10 +141,7 @@ public class PlotterData extends AbstractList<List<Object>> {
     }
 
     public PlotterDataColumn getColumn(int col) {
-        for (int c = columns.size(), cs = Math.min(columnSize - 1, col); c <= cs; ++c) {
-            columns.add(new PlotterDataColumn(this, c));
-        }
-        return columns.get(col);
+        return new PlotterDataColumn(this, col);
     }
 
     public PlotterDataColumn getColumnFirst() {
@@ -148,27 +152,19 @@ public class PlotterData extends AbstractList<List<Object>> {
         return getColumn(Math.max(0, getColumnSize() - 1));
     }
 
-    public <E> PlotterDataColumn addColumn() {
+    public PlotterDataColumn addColumn() {
         int i = getColumnSize();
-        PlotterDataColumn col = new PlotterDataColumn(this, i)
-                .fillRest(getZero())
-                .moveRowFirst();
-        if (i > 0) {
-            getColumn(i - 1); //expand
-        }
-        columns.add(col);
+        var col = new PlotterDataColumn(this, i);
         columnSize = i + 1; //considering no rows case
         return col;
     }
 
-    public <E> PlotterDataColumn addColumnFirst() {
+    public PlotterDataColumn addColumnFirst() {
         int s = getColumnSize();
         for (int r = 0, rs = getRowSize(); r < rs; ++r) {
             addCell(r, 0, getZero());
         }
-        columns.forEach(PlotterDataColumn::shiftColumnIndex);
         PlotterDataColumn col = new PlotterDataColumn(this, 0);
-        columns.add(0, col);
         columnSize = s + 1; //considering no rows case
         return col;
     }
@@ -195,17 +191,10 @@ public class PlotterData extends AbstractList<List<Object>> {
 
     public static class PlotterDataColumn {
         protected PlotterData owner;
-        protected int rowIndex = 0;
         protected int columnIndex;
 
         public PlotterDataColumn(PlotterData owner, int columnIndex) {
             this.owner = owner;
-            this.columnIndex = columnIndex;
-        }
-
-        public PlotterDataColumn(PlotterData owner, int rowIndex, int columnIndex) {
-            this.owner = owner;
-            this.rowIndex = rowIndex;
             this.columnIndex = columnIndex;
         }
 
@@ -214,17 +203,8 @@ public class PlotterData extends AbstractList<List<Object>> {
             return this;
         }
 
-        public PlotterDataColumn shiftRowIndex() {
-            this.rowIndex++;
-            return this;
-        }
-
         public PlotterData end() {
             return owner;
-        }
-
-        public int getRowIndex() {
-            return rowIndex;
         }
 
         public int getColumnIndex() {
@@ -239,156 +219,108 @@ public class PlotterData extends AbstractList<List<Object>> {
             return owner.getColumn(columnIndex - 1);
         }
 
-        public PlotterDataColumn moveRowFirst() {
-            rowIndex = 0;
-            return this;
-        }
-
-        public PlotterDataColumn moveRowLast() {
-            rowIndex = owner.getRowSize() - 1;
-            return this;
-        }
-
-        public PlotterDataColumn moveRowLastNext() {
-            rowIndex = owner.getRowSize();
-            return this;
-        }
-
-        public PlotterDataColumn moveRowNext() {
-            ++rowIndex;
-            return this;
-        }
-
-        public PlotterDataColumn moveRowPrevious() {
-            rowIndex = Math.max(0, rowIndex - 1);
-            return this;
-        }
-
-        public PlotterDataColumn moveRow(int row) {
-            rowIndex = row;
-            return this;
-        }
-
-        public <E> PlotterDataColumn set(E rowValue) {
+        public <E> PlotterDataColumn set(int rowIndex, E rowValue) {
             owner.setCell(rowIndex, columnIndex, rowValue);
-            ++rowIndex;
             return this;
+        }
+
+        public <E> PlotterDataColumn set(int rowIndex, Function<Integer,E> rowToValue) {
+            return set(rowIndex, rowToValue.apply(rowIndex));
+        }
+
+        public <E> PlotterDataColumn set(int rowIndex, BiFunction<Integer,Integer,E> rowColumnToValue) {
+            return set(rowIndex, rowColumnToValue.apply(rowIndex, columnIndex));
         }
 
         public <E> PlotterDataColumn setAll(List<E> rowValues) {
-            rowValues.forEach(this::set);
+            IntStream.range(0, rowValues.size())
+                    .forEach(i -> {
+                        var e = rowValues.get(i);
+                        if (e != null) {
+                            set(i, e);
+                        }
+                    });
             return this;
         }
 
-        public <E> PlotterDataColumn setAll(E... rowValues) {
-            Arrays.stream(rowValues)
-                    .forEach(this::set);
+        @SafeVarargs
+        public final <E> PlotterDataColumn setAll(E... rowValues) {
+            return setAll(Arrays.asList(rowValues));
+        }
+
+        public <E> PlotterDataColumn setAll(Function<Integer,E> rowToValue) {
+            return setAll((row, col) -> rowToValue.apply(row));
+        }
+
+        public <E> PlotterDataColumn setAll(BiFunction<Integer,Integer,E> rowColumnToValue) {
+            IntStream.range(0, owner.getRowSize())
+                    .forEach(i -> {
+                        var e = rowColumnToValue.apply(i, columnIndex);
+                        if (e != null) {
+                            set(i, e);
+                        }
+                    });
             return this;
         }
 
-        public <E> PlotterDataColumn set(Function<Integer,E> rowToValue) {
-            return set(rowToValue.apply(rowIndex));
+        public <E> PlotterDataColumn updateAll(IndexAndValue<E> indexAndValue) {
+            return updateRowsRange(0, 0, indexAndValue);
         }
 
-        public <E> PlotterDataColumn set(BiFunction<Integer,Integer,E> rowColumnToValue) {
-            return set(rowColumnToValue.apply(rowIndex, columnIndex));
+        public <E> PlotterDataColumn updateRowsFrom(int rowIndexStart, IndexAndValue<E> indexAndValue) {
+            return updateRowsRange(rowIndexStart, 0, indexAndValue);
         }
 
-
-        public <E> PlotterDataColumn set(int n, Function<Integer,E> rowToValue) {
-            return set(n, (r,c) -> rowToValue.apply(r));
-        }
-
-        public <E> PlotterDataColumn set(int n, BiFunction<Integer,Integer,E> rowColumnToValue) {
-            for (int i = 0; i < n; ++i) {
-                set(rowColumnToValue.apply(rowIndex, columnIndex));
-            }
-            return this;
-        }
-
-        public <E> PlotterDataColumn fill(int n, E e) {
-            return set(n, (r,c) -> e);
-        }
-
-        public <E> PlotterDataColumn setRest(Function<Integer,E> rowToValue) {
-            return setRest((r,c) -> rowToValue.apply(r));
-        }
-
-        public <E> PlotterDataColumn setRest(BiFunction<Integer,Integer,E> rowColumnToValue) {
-            for (int r = rowIndex, rs = owner.getRowSize(); r < rs; ++r) {
-                set(rowColumnToValue.apply(r, columnIndex));
-            }
-            return this;
-        }
-
-        public <E> PlotterDataColumn fillRest(E e)  {
-            return setRest((r,c) -> e);
-        }
-
-        public PlotterDataColumn setAll(float[] rows) {
-            for (float f : rows) {
-                set(f);
-            }
-            return this;
-        }
-
-        public PlotterDataColumn setAll(double[] rows) {
-            Arrays.stream(rows)
-                    .forEach(this::set);
-            return this;
-        }
-
-        public PlotterDataColumn setAll(int[] rows) {
-            Arrays.stream(rows)
-                    .forEach(this::set);
-            return this;
-        }
-
-        public PlotterDataColumn setAll(long[] rows) {
-            Arrays.stream(rows)
-                    .forEach(this::set);
-            return this;
-        }
-
-        public <E> PlotterDataColumn update(int n, Function<E, E> valueToValue) {
-            return update(n, (int r, int c, E v) -> valueToValue.apply(v));
-        }
-
-        public <E> PlotterDataColumn update(int n, BiFunction<Integer, E, E> rowValueToValue) {
-            return update(n, (int r,int c, E v) -> rowValueToValue.apply(r, v));
+        public <E> PlotterDataColumn updateRowsTo(int rowIndexEndExclusive, IndexAndValue<E> indexAndValue) {
+            return updateRowsRange(0, rowIndexEndExclusive, indexAndValue);
         }
 
         @SuppressWarnings("unchecked")
-        public <E> PlotterDataColumn update(int n, IndexAndValue<E> rowColValueToValue) {
-            for (int i = 0; i < n; ++i) {
-                set(rowColValueToValue.apply(rowIndex, columnIndex, (E) owner.getCell(rowIndex, columnIndex)));
-            }
+        public <E> PlotterDataColumn updateRowsRange(int rowIndexStart, int rowIndexEndExclusive, IndexAndValue<E> indexAndValue) {
+            IntStream.range(rowIndexStart, endRowIndex(rowIndexEndExclusive))
+                    .forEach(i -> {
+                        var e = indexAndValue.apply(i, columnIndex, (E) owner.getCell(i, columnIndex));
+                        if (e != null) {
+                            set(i, e);
+                        }
+                    });
             return this;
         }
 
-        public <E> PlotterDataColumn updateRest(Function<E, E> valueToValue) {
-            return updateRest((int r, int c, E v) -> valueToValue.apply(v));
+        private int endRowIndex(int rowIndexEndExclusive) {
+            if (rowIndexEndExclusive <= 0) {
+                return owner.getRowSize() + rowIndexEndExclusive;
+            } else {
+                return rowIndexEndExclusive;
+            }
         }
 
-        public <E> PlotterDataColumn updateRest(BiFunction<Integer, E, E> rowValueToValue) {
-            return updateRest((int r,int c, E v) -> rowValueToValue.apply(r, v));
+        public <E> Stream<E> streamAll() {
+            return streamRowRange(0, 0);
+        }
+
+        public <E> Stream<E> streamRowFrom(int rowIndexStart) {
+            return streamRowRange(rowIndexStart, 0);
+        }
+
+        public <E> Stream<E> streamRowsTo(int rowIndexEndExclusive) {
+            return streamRowRange(0, rowIndexEndExclusive);
         }
 
         @SuppressWarnings("unchecked")
-        public <E> PlotterDataColumn updateRest(IndexAndValue<E> rowColValueToValue) {
-            for (int r = rowIndex, rs = owner.getRowSize(); r < rs; ++r) {
-                set(rowColValueToValue.apply(r, columnIndex, (E) owner.getCell(r, columnIndex)));
-            }
-            return this;
+        public <E> E get(int rowIndex) {
+            return (E) owner.getCell(rowIndex, columnIndex);
         }
 
-        public Object get() {
-            return owner.getCell(rowIndex, columnIndex);
+        @SuppressWarnings("unchecked")
+        public <E> Stream<E> streamRowRange(int fromRowIndex, int toRowIndexExclusive) {
+            return IntStream.range(fromRowIndex, endRowIndex(toRowIndexExclusive))
+                    .mapToObj(r -> (E) owner.getCell(r, columnIndex));
         }
 
         @Override
         public String toString() {
-            return "cell(row=" + rowIndex + ",col=" + columnIndex + ")";
+            return "column(" + columnIndex + ")";
         }
     }
 
@@ -398,8 +330,54 @@ public class PlotterData extends AbstractList<List<Object>> {
 
     @Override
     public String toString() {
-        return "[" + data.stream()
+        return "[" + IntStream.range(0, getRowSize())
+                .mapToObj(this::getRow)
                 .map(Object::toString)
                 .collect(Collectors.joining(",\n")) + "]";
+    }
+
+    public List<List<Object>> filteredColumns(IntPredicate columnFilter) {
+        return new PlotterDataFiltered(data, IntStream.range(0, getColumnSize())
+                .filter(columnFilter)
+                .toArray());
+    }
+
+    public static class PlotterDataFiltered extends PlotterData {
+        protected int[] columnIndices;
+
+        public PlotterDataFiltered(ArrayList<List<Object>> data, int[] columnIndices) {
+            super(data);
+            this.columnIndices = columnIndices;
+            this.columnSize = columnIndices.length;
+        }
+
+        @Override
+        public List<Object> get(int index) {
+            return new PlotterLists.FilteredList<>(data.get(index), columnIndices);
+        }
+
+        @Override
+        public List<Object> getRow(int row) {
+            if (row < size()) {
+                return get(row);
+            } else {
+                return List.of();
+            }
+        }
+
+        @Override
+        public boolean add(List<Object> objects) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void add(int index, List<Object> element) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public List<Object> set(int index, List<Object> element) {
+            throw new UnsupportedOperationException();
+        }
     }
 }

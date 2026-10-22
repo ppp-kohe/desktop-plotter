@@ -54,11 +54,11 @@ public class PlotterDemo {
     }
 
     void initLight(PlotterState<?> p) {
-
+        p.setPlotPaintForLight();
     }
+
     void initDark(PlotterState<?> p) {
-        p.setPlotAreaBackground(new Color(30, 30, 30));
-        p.setPlotLinePaint(new Color(200, 200, 200));
+        p.setPlotPaintForDark();
     }
 
 

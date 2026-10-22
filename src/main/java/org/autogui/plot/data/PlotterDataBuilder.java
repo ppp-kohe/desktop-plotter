@@ -3,24 +3,106 @@ package org.autogui.plot.data;
 import java.util.*;
 import java.util.function.*;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 ///declarative matrix data builder via fluent interfaces.
 /// The class translates from a table-data to a plotting-data.
-///  For distinguishing those 2 input and output data, use different terms;
+///
+/// The declaration of transformation can be done by method chaining of fluent-interfaces;
+///
+/// ```java
+///    var builder = PlotterDataBuilder.create()
+///       .selectHeader()
+///           .lineTop()
+///           .bindFieldIndex("d", "Date")
+///           .bindFieldIndex("p", "Price")
+///       .endSelect()
+///       .selectData()
+///           .lineNotTop()
+///           .takeFieldName("d").asRowLabel().endTake()
+///           .takeFieldName("p").value(Double::parseDouble).fieldNameOrIndexAsColumnLabel().endTake()
+///        .endSelect();
+///
+///     try (var lines = Files.lines(Paths.get("input.csv"))) {
+///          var table = lines.map(l -> List.of(l.split(",")))
+///                     .toList();
+///          var data = builder.run(table);
+///          IO.println(data);
+///     }
+/// ```
+/// Note the class handles parsed table data of {@link List}`<List<Object>>`.
+///
+///* The primary purpose of the class is transforming to data for rendering plots by {@link org.autogui.plot.PlotterForMatrix}.
+///* The class does not intend to handle large data.
+///  The class has ability to minimize row data by reducing rows thanks to {@link PlotterDataReducer}.
+///
+/// For distinguishing those 2 input and output data, use different terms;
 ///
 ///* Input table-data: *line*s of *field*s. Each line contains separated fields.
+///
+///   ```
+///   line0_field0, line0_field1, line0_field2, ... //header
+///   line1_field0, line1_field1, line1_field2, ...
+///   ...
+///   ```
+///
 ///* Output plotting-data: *row*s of *column*s. Column defines a series of plotting-points.
 ///    Each row contains an instant value of each column.
 ///
-///* {@link #selectLine()} : starts a specification of lines as {@link BuilderSelect}
-///   * line selectors: {@link BuilderSelect#line(int)}, {@link BuilderSelect#lineIfLine(Predicate)}, ...
-///   * binders : {@link BuilderSelect#bindColumnIndexIf(String, BiFunction)} ; `name, (colVal, colIdx) -> bool`, ...
-///   * takers
+///   ```
+///   row_label,  column1_label, column2_label, ... //header
+///   row1_label,  row1_column1,  row1_column2, ... //data
+///   ...
+///   ```
+///
+/// * {@link #create()} returns a new instance; it is the starting point of declaring transformation
+/// * {@link #selectHeader()} and {@link #selectData()} returns a sub-clause instance `BuilderSelect...`
+///    for declaring header-bindings and data-selections
+///    * Those 2 sub-clauses are {@link BuilderSelect}: have abilities for selecting input lines
+///        * `line...`: line-selectors. {@link BuilderSelect#line(long)}, {@link BuilderSelect#lineTop()}, {@link BuilderSelect#lineNotTop()}, and so on
+///        * `lineField...` : line-selectors by field-value testing, returning a sub-clause {@link BuilderLineField}.
+///             {@link BuilderSelect#lineFieldIndex(int)} and {@link BuilderSelect#lineFieldName(String)}.
+///             * string testing methods {@link BuilderLineField#contains(String)} and so on,
+///               general testing method {@link BuilderLineField#test(Predicate)},
+///               and checking existence {@link BuilderLineField#exists()} and so on.
+///               Those testing calls return the owner {@link BuilderSelect} without an explicit end method.
+///        * {@link BuilderSelect#endSelect()} closes the clause and back to the root
+///    * {@link BuilderSelectHeader} : the header-bindings defines binding
+///        * `bindField...`:  field-bindings. {@link BuilderSelectHeader#bindFieldIndex(String, int)} and so on.
+///            It takes a field in the selected header line, and creates a binding with a specified name.
+///            The binding holds a field index in the input data, and in the later data part, it can refer the bound field index by the name.
+///        * It can bind multiple fields to one name. 
+///          For instance {@link BuilderSelectHeader#bindFieldIndexInIndices(String, int...)} can specify multiple field indices.
+///        * {@link BuilderSelectHeader#noLine()} is the special line-selector, for the input data that has no header lines.
+///    * {@link BuilderSelectData} : the data-selections, refer bindings defined in the header-bindings and construct an output table data
+///        * `takeField...`: adding a field handler. {@link BuilderSelectData#takeFieldName(String)} and so on. 
+///           returning a sub-clause {@link BuilderTakeField}
+///            * the call selects a field binding {@link BuilderSelectData#takeFieldName(String)},
+///               a field index {@link BuilderSelectData#takeFieldIndex(int)}, or 
+///               multiple field bindings {@link BuilderSelectData#takeFieldNameAsList(String)}
+///            * `value` : taking field values as output column values, returning a sub-clause {@link BuilderTakeFieldValue}.
+///                 The sub-clause can specify options for the output values.
+///                 * `...AsColumnLabel`, `...AsRowLabel` specifies the column or row label of the output values.
+///                 * {@link BuilderTakeFieldValue#useAsRowSorter(Comparator)} selects the column for soring output rows with the comparator.
+///                 * {@link BuilderTakeFieldValue#endTake()} closes the clause and back to the parent
+///            * `asColumnLabel`, `asRowLabel` : taking field values as column or row labels for output values by same lines.
+///                returns a sub-clause {@link BuilderTakeFieldLabel}
+///            * `valueOccurrences`: taking occurrences count of field values as output column values. it does not open new sub-clause.
+///            * The above calls can take optional value converter, like {@link BuilderTakeField#value(Function)}.
+///               The convert can take a field value and return another typed value as an output value.
+/// * {@link #withReduce(int, int)} the arguments (maxDataSize, startReducingDataSize) specify
+///     the output data row size and max buffering data row size; maxDataSize < startReducingDataSize,
+///      and startReducingDataSize is sufficiently large to the maxDataSize.
+///     In processing, if the buffering output rows over the startReducingDataSize, then it reduces the buffering data to maxDataSize.
+///     Also, at the end of the process, the output rows are automatically reduced to maxDataSize.
+/// * {@link #run(Iterable)} or {@link #run(Iterator)} starts the processing
+///
 public class PlotterDataBuilder {
     protected List<BuilderSelect<?>> lines = new ArrayList<>();
     protected Function<Set<String>,String> rowHeadLabel = ss -> String.join(":", ss);
+    protected int maxDataSize;
+    protected int startReduceDataSize;
+
     public static PlotterDataBuilder create() {
         return new PlotterDataBuilder();
     }
@@ -45,11 +127,15 @@ public class PlotterDataBuilder {
         return l;
     }
 
-
+    public PlotterDataBuilder withReduce(int maxDataSize, int startReducingDataSize) {
+        this.maxDataSize = maxDataSize;
+        this.startReduceDataSize = Math.max(maxDataSize, startReducingDataSize);
+        return this;
+    }
 
     public static abstract class BuilderSelect<SelfType extends BuilderSelect<SelfType>> {
         protected PlotterDataBuilder owner;
-        protected Set<Integer> selectedLines = new HashSet<>();
+        protected Set<Long> selectedLines = new HashSet<>();
         protected List<Predicate<LineInfo>> lineSelectors = new ArrayList<>();
         protected boolean once;
 
@@ -78,7 +164,7 @@ public class PlotterDataBuilder {
          * @return this
          */
         @SuppressWarnings("unchecked")
-        public SelfType line(int index) {
+        public SelfType line(long index) {
             selectedLines.add(index);
             return (SelfType) this;
         }
@@ -91,27 +177,27 @@ public class PlotterDataBuilder {
             return lineGreaterThan(0);
         }
 
-        public SelfType lineGreaterThan(int index) {
+        public SelfType lineGreaterThan(long index) {
             return lineIf((ln) -> ln > index);
         }
 
-        public SelfType lineLessThan(int index) {
+        public SelfType lineLessThan(long index) {
             return lineIf((ln) -> ln < index);
         }
 
-        public SelfType lineGreaterThanEqual(int index) {
+        public SelfType lineGreaterThanEqual(long index) {
             return lineIf((ln) -> ln >= index);
         }
 
-        public SelfType lineLessThanEqual(int index) {
+        public SelfType lineLessThanEqual(long index) {
             return lineIf((ln) -> ln <= index);
         }
 
-        public SelfType lineNot(int index) {
+        public SelfType lineNot(long index) {
             return lineIf((ln) -> ln != index);
         }
 
-        public SelfType lineIf(Predicate<Integer> lineNumTest) {
+        public SelfType lineIf(Predicate<Long> lineNumTest) {
             return lineIfLine((line) -> lineNumTest.test(line.getLineNum()));
         }
 
@@ -154,6 +240,8 @@ public class PlotterDataBuilder {
 
 
         //----------------------
+
+        public void runInit(LineRunningState state) {}
 
         public boolean run(LineRunningState state,
                         CellAggregation cellAggregation) {
@@ -236,7 +324,7 @@ public class PlotterDataBuilder {
         }
     }
 
-    public static final int lineIndexNone = -1;
+    public static final long lineIndexNone = -1;
 
     public static class BuilderSelectHeader extends BuilderSelect<BuilderSelectHeader> {
         protected String headerName;
@@ -332,7 +420,7 @@ public class PlotterDataBuilder {
         }
 
         @Override
-        public BuilderSelectHeader line(int index) {
+        public BuilderSelectHeader line(long index) {
             super.line(index);
             if (isMultiline()) {
                 once = false;
@@ -341,7 +429,7 @@ public class PlotterDataBuilder {
         }
 
         @Override
-        public BuilderSelectHeader lineIf(Predicate<Integer> lineNumTest) {
+        public BuilderSelectHeader lineIf(Predicate<Long> lineNumTest) {
             super.lineIf(lineNumTest);
             if (isMultiline()) {
                 once = false;
@@ -413,6 +501,13 @@ public class PlotterDataBuilder {
         }
 
         @Override
+        public void runInit(LineRunningState state) {
+            super.runInit(state);
+            valueGenerators.forEach(t -> t.runInit(state));
+            propertySetters.forEach(t -> t.runInit(state));
+        }
+
+        @Override
         public boolean run(LineRunningState state, CellAggregation cellAggregation) {
             if (state.getLineNum() == lineIndexNone) {
                 return false;
@@ -435,7 +530,6 @@ public class PlotterDataBuilder {
     public static class BuilderTakeField<OwnerType extends BuilderSelectData> {
         protected OwnerType owner;
         protected TakeField takeField;
-        protected Function<?, Object> valueConverter;
 
         public BuilderTakeField(OwnerType owner, TakeField takeField) {
             this.owner = owner;
@@ -443,75 +537,53 @@ public class PlotterDataBuilder {
         }
 
         public BuilderTakeFieldValue<OwnerType> value() {
-            return new BuilderTakeFieldValue<>(owner, takeField);
-        }
-
-        public OwnerType asColumnLabel() {
-            return asColumnLabel((exLabel, v) -> Objects.toString(v));
-        }
-        @SuppressWarnings("unchecked")
-        public <E> OwnerType asColumnLabel(BiFunction<String, E, String> existingColumnLabelAndValueToColumnLabel) {
-            return addTakeFieldToTarget(new TakeFieldToTarget(false, takeField, (state, i, v) ->
-                    state.forEachTarget(t -> t.columnLabel = existingColumnLabelAndValueToColumnLabel.apply(t.columnLabel, (E) v))));
-        }
-
-        public OwnerType asRowLabel() {
-            return asRowLabel((exLabel, v) -> Objects.toString(v));
+            return value(null);
         }
 
         @SuppressWarnings("unchecked")
-        public <E> OwnerType asRowLabel(BiFunction<String, E, String> existingRowLabelAndValueToRowLabel) {
-            return addTakeFieldToTarget(new TakeFieldToTarget(false, takeField, (state, i, v) ->
-                    state.forEachTarget(t -> {
-                        t.rowLabelName = i.name;
-                        t.rowLabel = existingRowLabelAndValueToRowLabel.apply(t.rowLabel, (E) v);
-                    })));
+        public <E> BuilderTakeFieldValue<OwnerType> value(Function<E, Object> valueConverter) {
+            return new BuilderTakeFieldValue<>(owner, takeField, (Function<Object, Object>) valueConverter);
         }
 
-        public OwnerType rowSortKey() {
-            return addTakeFieldToTarget(takeColumnToTargetRowSortKey(takeField));
-        }
-
-        public OwnerType columnSortKey() {
-            return addTakeFieldToTarget(takeColumnToTargetColumnSortKey(takeField));
+        public BuilderTakeFieldLabel<OwnerType> asColumnLabel() {
+            return asColumnLabel(null);
         }
 
         @SuppressWarnings("unchecked")
-        public <E> BuilderTakeField<OwnerType> convert(Function<E,Object> converter) {
-            if (valueConverter == null) {
-                this.valueConverter = converter;
-            } else {
-                this.valueConverter = (v) -> converter.apply((E) ((Function<Object,Object>) valueConverter).apply(v));
-            }
-            return this;
+        public <E> BuilderTakeFieldLabel<OwnerType> asColumnLabel(Function<E, Object> valueConverter) {
+            return new BuilderTakeFieldLabel<>(owner, takeField, false, (Function<Object, Object>) valueConverter);
+        }
+
+        public BuilderTakeFieldLabel<OwnerType> asRowLabel() {
+            return asRowLabel(null);
+        }
+
+        @SuppressWarnings("unchecked")
+        public <E> BuilderTakeFieldLabel<OwnerType> asRowLabel(Function<E, Object> valueConverter) {
+            return new BuilderTakeFieldLabel<>(owner, takeField, true, (Function<Object, Object>) valueConverter);
         }
 
         public BuilderTakeField<OwnerType> valueOccurrences() {
-            return valueOccurrences((v, i) -> i);
+            return valueOccurrences(null);
+        }
+
+        public <E> BuilderTakeField<OwnerType> valueOccurrences(Function<E, Object> valueConverter) {
+            return valueOccurrences(valueConverter, (v, i) -> i);
         }
 
         @SuppressWarnings("unchecked")
-        public <E> BuilderTakeField<OwnerType> valueOccurrences(BiFunction<E, Integer, Object> valueOccurrencesCombiner) {
+        public <F, E> BuilderTakeField<OwnerType> valueOccurrences(Function<F, E> valueConverter, BiFunction<E, Long, Object> valueOccurrencesCombiner) {
             if (!(takeField instanceof TakeColumnOccurrence)) {
-                takeField = new TakeColumnOccurrence(takeField, (v, i) -> valueOccurrencesCombiner.apply((E) v, i));
+                takeField = new TakeColumnOccurrence(takeField,
+                        (Function<Object, Object>) valueConverter,
+                        (v, i) -> valueOccurrencesCombiner.apply((E) v, i));
             }
             return this;
         }
 
         @SuppressWarnings("unchecked")
         public OwnerType addTakeFieldToTarget(TakeFieldToTarget t) {
-            if (valueConverter != null) {
-                t = t.setValueConverter(valueConverter);
-            }
             return (OwnerType) owner.addTakeFieldToTarget(t);
-        }
-        //----------------------
-        public static TakeFieldToTarget takeColumnToTargetRowSortKey(TakeField takeColumn) {
-            return new TakeFieldToTarget(false, takeColumn, (state, i, v) -> state.forEachTarget(t -> t.rowSortKey = v));
-        }
-
-        public static TakeFieldToTarget takeColumnToTargetColumnSortKey(TakeField takeColumn) {
-            return new TakeFieldToTarget(false, takeColumn, (state, i, v) -> state.forEachTarget(t -> t.columnSortKey = v));
         }
     }
 
@@ -519,11 +591,14 @@ public class PlotterDataBuilder {
         protected OwnerType owner;
         protected TakeField takeField;
         protected TakeColumnRunnerCell takeCell;
+        protected Function<Object, Object> valueConverter;
+        protected Comparator<?> sortComparator;
 
-        public BuilderTakeFieldValue(OwnerType owner, TakeField takeField) {
+        public BuilderTakeFieldValue(OwnerType owner, TakeField takeField, Function<Object, Object> valueConverter) {
             this.owner = owner;
             this.takeField = takeField;
             takeCell = new TakeColumnRunnerCell();
+            this.valueConverter = valueConverter;
         }
 
         public BuilderTakeFieldValue<OwnerType> fieldIndexAsColumnLabel() {
@@ -608,13 +683,70 @@ public class PlotterDataBuilder {
             return this;
         }
 
+        public <E> BuilderTakeFieldValue<OwnerType> useAsRowSorter(Comparator<E> comparator) {
+            this.sortComparator = comparator;
+            return this;
+        }
+
         @SuppressWarnings("unchecked")
         public OwnerType endTake() {
-            return (OwnerType) owner.addTakeFieldToTarget(new TakeFieldToTarget(true, takeField, takeCell));
+            return (OwnerType) owner.addTakeFieldToTarget(new TakeFieldToTarget(true, takeField, takeCell, valueConverter, sortComparator));
         }
     }
 
-    public static String key(int line, List<Integer> field) {
+    public static class BuilderTakeFieldLabel<OwnerType extends BuilderSelectData> {
+        protected OwnerType owner;
+        protected TakeField takeField;
+        protected boolean rowOrColumn;
+        protected Function<Object, Object> valueConverter;
+        protected BiFunction<String, Object, String> existingLabelAndValueToLabel;
+        protected Comparator<?> sortComparator;
+
+        public BuilderTakeFieldLabel(OwnerType owner, TakeField takeField, boolean rowOrColumn, Function<Object, Object> valueConverter) {
+            this.owner = owner;
+            this.takeField = takeField;
+            this.rowOrColumn = rowOrColumn;
+            this.valueConverter = valueConverter;
+        }
+
+        @SuppressWarnings("unchecked")
+        public <E> BuilderTakeFieldLabel<OwnerType> labelCombine(BiFunction<String, E, String> existingLabelAndValueToLabel) {
+            this.existingLabelAndValueToLabel = (BiFunction<String, Object, String>) existingLabelAndValueToLabel;
+            return this;
+        }
+
+
+        public <E> BuilderTakeFieldLabel<OwnerType> sorter(Comparator<E> comparator) {
+            this.sortComparator = comparator;
+            return this;
+        }
+
+        @SuppressWarnings("unchecked")
+        public OwnerType endTake() {
+            TakeColumnRunner updater;
+            if (rowOrColumn) {
+                updater = (state, i, sid, v) ->
+                        state.forEachTarget(t -> {
+                            t.rowLabelName = i.name;
+                            t.rowLabel = toLabel(existingLabelAndValueToLabel, t.rowLabel, v);
+                            t.rowLabelSorterStaticId = sid;
+                        });
+            } else {
+                updater = (state, i, sid, v) ->
+                        state.forEachTarget(t -> {
+                            t.columnLabel = toLabel(existingLabelAndValueToLabel, t.columnLabel, v);
+                            t.columnLabelSorterStaticId = sid;
+                        });
+            }
+            return (OwnerType) owner.addTakeFieldToTarget(new TakeFieldToTarget(false, takeField, updater, valueConverter, sortComparator));
+        }
+
+        static String toLabel(BiFunction<String, Object, String> existingLabelAndValueToLabel, String prevLabel, Object v) {
+            return existingLabelAndValueToLabel == null ? Objects.toString(v) : existingLabelAndValueToLabel.apply(prevLabel, v);
+        }
+    }
+
+    public static String key(long line, List<Integer> field) {
         return line + "." + field;
     }
 
@@ -628,11 +760,15 @@ public class PlotterDataBuilder {
     }
 
     public <E> PlotterData run(Iterable<List<E>> source) {
+        return run(source.iterator());
+    }
+    public <E> PlotterData run(Iterator<List<E>> source) {
         return run(new LineRunningStateList<E>(), source, LineRunningStateList::setLine);
     }
 
-    public <StateType extends LineRunningState, LineType> PlotterData run(StateType state, Iterable<LineType> source,
+    public <StateType extends LineRunningState, LineType> PlotterData run(StateType state, Iterator<LineType> source,
                                                                           BiConsumer<StateType,LineType> lineSetter) {
+        lines.forEach(line -> line.runInit(state));
         CellAggregation cells = new CellAggregation(rowHeadLabel);
         state.setLineNum(lineIndexNone);
         var lines = new ArrayList<>(this.lines);
@@ -644,8 +780,10 @@ public class PlotterDataBuilder {
                 }
             }
         }
-        int lineNum = 0;
-        for (LineType line : source) {
+        cells.setSortComparators(state.getSortComparators()); //pass mutating object reference
+        long lineNum = 0;
+        while (source.hasNext()) {
+            LineType line = source.next();
             state.setLineNum(lineNum);
             lineSetter.accept(state, line);
             for (Iterator<BuilderSelect<?>> iter = lines.iterator(); iter.hasNext(); ) {
@@ -658,8 +796,17 @@ public class PlotterDataBuilder {
                 }
             }
             ++lineNum;
+            reduceIfOver(cells, false);
         }
+        reduceIfOver(cells, true);
         return cells.build();
+    }
+
+    private void reduceIfOver(CellAggregation cells, boolean force) {
+        if (maxDataSize > 0 && (force || cells.rowSize() >= startReduceDataSize)) {
+            new PlotterDataReducer.PlotterDataReducerForBuilder(cells, maxDataSize)
+                    .run();
+        }
     }
 
     public static final int maxAccessingFieldIndexNone = -1;
@@ -700,30 +847,35 @@ public class PlotterDataBuilder {
         protected TakeField takeField;
         protected TakeColumnRunner runner;
         protected Function<Object,Object> valueConverter;
+        protected Comparator<?> comparator;
+        protected int staticId;
 
-        public TakeFieldToTarget(boolean valueGenerator, TakeField takeField,
-                                 TakeColumnRunner runner) {
-            this.valueGenerator = valueGenerator;
-            this.takeField = takeField;
+        public <E> TakeFieldToTarget(boolean valueGenerator, TakeField takeField,
+                                 TakeColumnRunner runner, Function<Object, Object> valueConverter, Comparator<?> comparator) {
             this.runner = runner;
+            this.takeField = takeField;
+            this.valueConverter = valueConverter;
+            this.valueGenerator = valueGenerator;
+            this.comparator = comparator;
         }
 
         public boolean isValueGenerator() {
             return valueGenerator;
         }
 
-        @SuppressWarnings("unchecked")
-        public <E> TakeFieldToTarget setValueConverter(Function<E,Object> valueConverter) {
-            this.valueConverter = (Function<Object,Object>) valueConverter;
-            return this;
+        public void runInit(LineRunningState state) {
+            staticId = state.nextStaticId();
+            if (comparator != null) {
+                state.putSortComparator(staticId, comparator);
+            }
         }
 
         public void run(LineRunningState state) {
             if (valueConverter != null) {
-                TakeColumnRunner f2 = (s, c, v) -> runner.run(s, c, valueConverter.apply(v));
-                takeField.run(state, f2);
+                TakeColumnRunner f2 = (s, c, sid, v) -> runner.run(s, c, sid, valueConverter.apply(v));
+                takeField.run(state, staticId, f2);
             } else {
-                takeField.run(state, runner);
+                takeField.run(state, staticId, runner);
             }
         }
 
@@ -763,11 +915,12 @@ public class PlotterDataBuilder {
         }
 
         @Override
-        public void run(LineRunningState state, FieldIndexBinding binding, Object value) {
+        public void run(LineRunningState state, FieldIndexBinding binding, int staticId, Object value) {
             Cell cell = state.addNewTarget();
             cell.value = value;
             cell.columnLabel = columnLabelSetter.takeLabelAsString(state, binding, value, cell);
             cell.rowLabel = rowLabelSetter.takeLabelAsString(state, binding, value, cell);
+            cell.rowSorterStaticId = staticId;
         }
     }
 
@@ -819,37 +972,43 @@ public class PlotterDataBuilder {
     }
 
     public interface TakeLabelLineAndFieldIndices {
-        String apply(int lineIndex, List<Integer> fieldIndex);
+        String apply(long lineIndex, List<Integer> fieldIndex);
     }
 
     public interface TakeLabelLineIndexAndFieldName {
-        String apply(int lineIndex, String fieldName);
+        String apply(long lineIndex, String fieldName);
     }
 
     //----------------------
 
     public interface TakeColumnRunner {
-        void run(LineRunningState state, FieldIndexBinding binding, Object value);
+        void run(LineRunningState state, FieldIndexBinding binding, int staticId, Object value);
     }
 
     public interface TakeField {
-        void run(LineRunningState state, TakeColumnRunner target);
+        void run(LineRunningState state, int staticId, TakeColumnRunner target);
     }
 
     public static class TakeColumnOccurrence implements TakeField {
         protected TakeField takeField;
-        protected BiFunction<Object, Integer, Object> valueOccurrenceCombiner;
+        protected Function<Object, Object> valueConverter;
+        protected BiFunction<Object, Long, Object> valueOccurrenceCombiner;
 
-        public TakeColumnOccurrence(TakeField takeField, BiFunction<Object, Integer, Object> valueOccurrenceCombiner) {
+        public TakeColumnOccurrence(TakeField takeField,
+                                    Function<Object, Object> valueConverter,
+                                    BiFunction<Object, Long, Object> valueOccurrenceCombiner) {
             this.takeField = takeField;
+            this.valueConverter = valueConverter;
             this.valueOccurrenceCombiner = valueOccurrenceCombiner;
         }
 
         @Override
-        public void run(LineRunningState state, TakeColumnRunner target) {
-            takeField.run(state,
-                    (s, c,v) -> target.run(s, c,
-                            valueOccurrenceCombiner.apply(v, s.getAndIncrementOccurrences(v))));
+        public void run(LineRunningState state, int staticId, TakeColumnRunner target) {
+            takeField.run(state, staticId,
+                    (s, c, sid, v) -> target.run(s, c, sid,
+                            valueOccurrenceCombiner.apply(v, s.getAndIncrementOccurrences(
+                                    valueConverter == null ? v :
+                                        valueConverter.apply(v)))));
         }
 
         @Override
@@ -866,9 +1025,9 @@ public class PlotterDataBuilder {
         }
 
         @Override
-        public void run(LineRunningState state,
+        public void run(LineRunningState state, int staticId,
                           TakeColumnRunner target) {
-            target.run(state, index, state.getFieldObject(index));
+            target.run(state, index, staticId, state.getFieldObject(index));
         }
 
         @Override
@@ -887,17 +1046,17 @@ public class PlotterDataBuilder {
         }
 
         @Override
-        public void run(LineRunningState state,
+        public void run(LineRunningState state, int staticId,
                         TakeColumnRunner target) {
             List<FieldIndexBinding> bindings = state.getBinding(headerName, fieldName);
             if (bindings != null) {
-                run(state, target, bindings);
+                run(state, staticId, target, bindings);
             }
         }
 
-        protected void run(LineRunningState state, TakeColumnRunner target, List<FieldIndexBinding> bindings) {
+        protected void run(LineRunningState state, int staticId, TakeColumnRunner target, List<FieldIndexBinding> bindings) {
             bindings.forEach(binding ->
-                    target.run(state, binding, state.getFieldObject(binding)));
+                    target.run(state, binding, staticId, state.getFieldObject(binding)));
         }
 
         @Override
@@ -912,8 +1071,8 @@ public class PlotterDataBuilder {
         }
 
         @Override
-        protected void run(LineRunningState state, TakeColumnRunner target, List<FieldIndexBinding> bindings) {
-            target.run(state, FieldIndexBinding.combine(bindings), bindings.stream()
+        protected void run(LineRunningState state, int staticId, TakeColumnRunner target, List<FieldIndexBinding> bindings) {
+            target.run(state, FieldIndexBinding.combine(bindings), staticId, bindings.stream()
                     .map(state::getFieldObject)
                     .toList());
         }
@@ -921,7 +1080,7 @@ public class PlotterDataBuilder {
 
     public interface LineInfo {
         int getFieldSize();
-        int getLineNum();
+        long getLineNum();
         Object getField(List<Integer> indices);
         Object getFieldObject(int columnIndex);
 
@@ -931,16 +1090,32 @@ public class PlotterDataBuilder {
     public static abstract class LineRunningState implements LineInfo {
         //inter-lines state
         protected Map<String, Map<String, List<FieldIndexBinding>>> fieldIndexBindings; //headerName -> fieldName -> binding
-        protected Map<Object, Integer> valueToOccurrences;
+        protected Map<Object, Long> valueToOccurrences;
+        protected int nextStaticId = 0;
+        protected Map<Integer, Comparator<?>> sortComparators = new LinkedHashMap<>();
 
         //line state
-        protected int lineNum = -1;
+        protected long lineNum = -1;
 
         protected List<Cell> targets = new ArrayList<>();
 
         public LineRunningState() {
             fieldIndexBindings = new LinkedHashMap<>();
             valueToOccurrences = new HashMap<>();
+        }
+
+        public int nextStaticId() {
+            var i = nextStaticId;
+            ++nextStaticId;
+            return i;
+        }
+
+        public void putSortComparator(int staticId, Comparator<?> comparator) {
+            sortComparators.put(staticId, comparator);
+        }
+
+        public Map<Integer, Comparator<?>> getSortComparators() {
+            return sortComparators;
         }
 
         @Override
@@ -952,11 +1127,11 @@ public class PlotterDataBuilder {
         @Override
         public abstract Object getFieldObject(int index);
 
-        public int getLineNum() {
+        public long getLineNum() {
             return lineNum;
         }
 
-        public void setLineNum(int lineNum) {
+        public void setLineNum(long lineNum) {
             this.lineNum = lineNum;
         }
 
@@ -1008,13 +1183,13 @@ public class PlotterDataBuilder {
             return cell;
         }
 
-        public int getAndIncrementOccurrences(Object value) {
-            return valueToOccurrences.compute(value, (k, v) -> (v == null ? 0 : v) + 1) - 1;
+        public long getAndIncrementOccurrences(Object value) {
+            return valueToOccurrences.compute(value, (k, v) -> (v == null ? 0L : v) + 1L) - 1L;
         }
     }
 
     public static class LineRunningStateList<E> extends LineRunningState {
-        List<E> line;
+        protected List<E> line;
 
         public void setLine(List<E> line) {
             this.line = line;
@@ -1061,7 +1236,7 @@ public class PlotterDataBuilder {
         public Object value;
 
         public static FieldIndexBinding combine(List<FieldIndexBinding> bindings) {
-            List<Object> values = new ArrayList<>(bindings.size());
+            List<Object> values = new BindingArrayList<>(bindings.size());
             List<Integer> indices = new ArrayList<>(bindings.size());
             String headerName = null;
             String name = null;
@@ -1072,7 +1247,7 @@ public class PlotterDataBuilder {
                 }
                 if (binding.isSingleIndex()) {
                     values.add(binding.value);
-                } else if (binding.value instanceof List<?> list){
+                } else if (binding.value instanceof BindingArrayList<?> list) {
                     values.addAll(list);
                 } else {
                     values.add(binding.value);
@@ -1104,88 +1279,106 @@ public class PlotterDataBuilder {
         }
     }
 
+    protected static class BindingArrayList<E> extends ArrayList<E> {
+        public BindingArrayList(int initialCapacity) {
+            super(initialCapacity);
+        }
+    }
+
     public static class Cell {
-        public int lineIndex;
-        public Object rowSortKey;
-        public Object columnSortKey;
+        public long lineIndex;
         public String columnLabel;
         public String rowLabelName;
         public String rowLabel;
+        public int rowSorterStaticId = -1;
+        public int rowLabelSorterStaticId = -1;
+        public int columnLabelSorterStaticId = -1;
         public Object value;
 
-        public Cell(int lineIndex) {
+        public Cell(long lineIndex) {
             this.lineIndex = lineIndex;
-        }
-
-        public Object getRowSortKey() {
-            if (rowSortKey == null) {
-                return nullKey;
-            }
-            return rowSortKey;
-        }
-
-        public Object getColumnSortKey() {
-            if (columnSortKey == null) {
-                return nullKey;
-            }
-            return columnSortKey;
         }
 
         @Override
         public String toString() {
-            return "cell(line=" + lineIndex + ",col=" + columnLabel + ",row=" + rowLabel + ",val=" + value + ",rowSort=" + rowSortKey + ")";
+            return "cell(line=" + lineIndex + ",col=" + columnLabel + ",row=" + rowLabel + ",val=" + value + ")";
         }
     }
 
     public static class CellAggregation {
         protected Map<String, Map<String, Object>> rowToColumnToCell = new LinkedHashMap<>();
         protected Set<String> rowLabelNames = new LinkedHashSet<>();
-        protected Map<String, Object> columnLabelsToSortKey = new LinkedHashMap<>();
-        protected Map<String, Object> rowLabelsToSortKey = new LinkedHashMap<>();
+        protected Set<String> rowLabels = new LinkedHashSet<>();
+        protected Map<String, Integer> columnLabelToSorterStaticId = new LinkedHashMap<>();
+        protected int rowLabelSorterStaticId = -1;
+        protected int columnLabelSorterStaticId = -1;
         protected Function<Set<String>,String> rowHeadLabel;
+        protected Map<Integer, Comparator<?>> sortComparators = new LinkedHashMap<>();
+
 
         public CellAggregation(Function<Set<String>, String> rowHeadLabel) {
             this.rowHeadLabel = rowHeadLabel;
+        }
+
+        public void setSortComparators(Map<Integer, Comparator<?>> sortComparators) {
+            this.sortComparators = sortComparators;
+        }
+
+        public int rowSize() {
+            return rowToColumnToCell.size();
         }
 
         public void add(List<Cell> cells) {
             for (Cell cell : cells) {
                 rowToColumnToCell.computeIfAbsent(cell.rowLabel, r -> new LinkedHashMap<>())
                         .put(cell.columnLabel, cell.value);
-                columnLabelsToSortKey.compute(cell.columnLabel, (n,exKey) -> selectColumnKey(n, exKey, cell.getColumnSortKey()));
-                rowLabelsToSortKey.compute(cell.rowLabel, (n,exKey) -> selectColumnKey(n, exKey, cell.getRowSortKey()));
+                rowLabels.add(cell.rowLabel);
+                columnLabelToSorterStaticId.compute(cell.columnLabel, (n, exId) -> sorterStaticId(exId, cell.rowSorterStaticId));
+                rowLabelSorterStaticId = sorterStaticId(rowLabelSorterStaticId, cell.rowLabelSorterStaticId);
+                columnLabelSorterStaticId = sorterStaticId(columnLabelSorterStaticId, cell.columnLabelSorterStaticId);
                 if (cell.rowLabelName != null) {
                     rowLabelNames.add(cell.rowLabelName);
                 }
             }
         }
 
-        public Object selectColumnKey(String name, Object exKey, Object cKey) {
-            if (exKey == null) {
-                return cKey;
-            } else {
-                int c = compare(exKey, cKey);
-                if (c > 0) {
-                    return cKey;
-                } else {
-                    return exKey;
+        public void set(List<List<Object>> data) {
+            rowLabels.clear();
+            rowToColumnToCell.clear();
+            Iterator<List<Object>> rowIter = data.iterator();
+            var head = rowIter.next();
+            for (int i = 1; i < head.size(); ++i) {
+                var colLabel = Objects.toString(head.get(i));
+                if (!columnLabelToSorterStaticId.containsKey(colLabel)) {
+                    columnLabelToSorterStaticId.put(colLabel, -1);
                 }
             }
+            for (; rowIter.hasNext(); ) {
+                var row = rowIter.next();
+                var colIter = row.iterator();
+                var rowLabel = Objects.toString(colIter.next());
+                rowLabels.add(rowLabel);
+                for (int colIdx = 1; colIter.hasNext(); colIdx++) {
+                    var col = colIter.next();
+                    var colLabel = Objects.toString(head.get(colIdx));
+                    rowToColumnToCell.computeIfAbsent(rowLabel, r -> new LinkedHashMap<>())
+                            .put(colLabel, col);
+                }
+            }
+        }
+
+        private int sorterStaticId(Integer exId, int newId) {
+            return (exId == null || exId == -1) ? newId : exId;
         }
 
         public PlotterData build() {
             PlotterData data = PlotterData.create(rowToColumnToCell.size() + 1);
 
-            setDefaultKey(columnLabelsToSortKey);
-            setDefaultKey(rowLabelsToSortKey);
-
-            List<String> columnLabels = toLabels(columnLabelsToSortKey);
-            List<String> rowLabels = toLabels(rowLabelsToSortKey);
+            var columnLabels = sortedColumnLabels();
 
             List<Object> head = new ArrayList<>(columnLabels.size() + 1);
             head.add(rowHeadLabel.apply(rowLabelNames));
             head.addAll(columnLabels);
-            data.add(head);
 
             for (String row : rowLabels) {
                 Map<String,Object> cToC = rowToColumnToCell.get(row);
@@ -1196,38 +1389,83 @@ public class PlotterDataBuilder {
                 }
                 data.add(dst);
             }
+            data.sort(rowSortComparator(columnLabels));
+            data.addFirst(head);
             return data;
         }
 
-        private void setDefaultKey(Map<String,Object> labelToSortKey) {
-            int num = 0;
-            for (Map.Entry<String,Object> e : labelToSortKey.entrySet()) {
-                if (e.getValue() == null || e.getValue().equals(nullKey)) {
-                    e.setValue(num);
+        @SuppressWarnings("unchecked")
+        protected List<String> sortedColumnLabels() {
+            if (columnLabelSorterStaticId != -1) {
+                var sorter = sortComparators.get(columnLabelSorterStaticId);
+                if (sorter != null) {
+                    return columnLabelToSorterStaticId.keySet().stream()
+                            .sorted((Comparator<String>) sorter)
+                            .toList();
                 }
-                ++num;
+            }
+            return new ArrayList<>(columnLabelToSorterStaticId.keySet());
+        }
+
+        public Comparator<? super List<Object>> rowSortComparator(List<String> columnLabels) {
+            var sorters = columnSortComparators(columnLabels);
+            return (a, b) -> {
+                for (ColumnSorter s : sorters) {
+                    int n = s.sortComparator.compare(a.get(s.columnIndex), b.get(s.columnIndex));
+                    if (n != 0) {
+                        return n;
+                    }
+                }
+                return 0;
+            };
+        }
+
+        @SuppressWarnings("unchecked")
+        public List<ColumnSorter> columnSortComparators(List<String> columnLabels) {
+            var list = IntStream.range(0, columnLabels.size())
+                    .mapToObj(ci -> sorter(ci, columnLabels))
+                    .filter(Objects::nonNull)
+                    .sorted(Comparator.comparing(ColumnSorter::sorterStaticId))
+                    .toList();
+            if (rowLabelSorterStaticId != -1) {
+                Comparator<?> comparator = sortComparators.get(rowLabelSorterStaticId);
+                if (comparator != null) {
+                    List<ColumnSorter> newList = new ArrayList<>(list.size() + 1);
+                    newList.addAll(list);
+                    newList.add(new ColumnSorter(0, rowLabelSorterStaticId, (Comparator<Object>) comparator));
+                    return newList;
+                } else {
+                    return list;
+                }
+            } else {
+                return list;
+            }
+        }
+        @SuppressWarnings("unchecked")
+        private ColumnSorter sorter(int columnIndex, List<String> columnLabels) {
+            int sorterStaticId = columnLabelToSorterStaticId.getOrDefault(columnLabels.get(columnIndex), -1);
+            Comparator<?> comparator = sortComparators.get(columnIndex);
+            if (sorterStaticId == -1 || comparator == null) {
+                return null;
+            } else {
+                return new ColumnSorter(columnIndex + 1, sorterStaticId, (Comparator<Object>) comparator);
             }
         }
 
-        private List<String> toLabels(Map<String,Object> labelToSortKey) {
-            return labelToSortKey.entrySet().stream()
-                    .sorted(Map.Entry.comparingByValue(PlotterDataBuilder::compare))
-                    .map(Map.Entry::getKey)
-                    .collect(Collectors.toList());
-        }
+        public static class ColumnSorter {
+            public int columnIndex;
+            public int sorterStaticId;
+            public Comparator<Object> sortComparator;
 
-        public Object toRowSortKey(Map<String,Cell> colToCell, Object defVal) {
-            return colToCell.values().stream()
-                    .map(c -> c.getRowSortKey().equals(nullKey) ? c.rowLabel : c.rowSortKey)
-                    .filter(Objects::nonNull)
-                    .min(PlotterDataBuilder::compare)
-                    .orElse(defVal);
-        }
+            public int sorterStaticId() {
+                return sorterStaticId;
+            }
 
-
-        public List<Object> withHead(String h, List<Object> es) {
-            es.addFirst(h);
-            return es;
+            public ColumnSorter(int columnIndex, int sorterStaticId, Comparator<Object> sortComparator) {
+                this.columnIndex = columnIndex;
+                this.sorterStaticId = sorterStaticId;
+                this.sortComparator = sortComparator;
+            }
         }
 
         public Object toData(Object cellValue) {
@@ -1235,37 +1473,6 @@ public class PlotterDataBuilder {
                 return 0.0;
             } else {
                 return cellValue;
-            }
-        }
-    }
-
-    public static class NullKey {}
-    public static NullKey nullKey = new NullKey();
-
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    public static int compare(Object l, Object r) {
-        if (l == null || l.equals(nullKey)) {
-            if (r == null || r.equals(nullKey)) {
-                return 0;
-            } else {
-                return -1;
-            }
-        }  else if (r == null || r.equals(nullKey)/* && l != null*/) {
-            return 1;
-        } else if (l.equals(r)) {
-            return 0;
-        } else {
-            if (l.getClass().equals(r.getClass()) && l instanceof Comparable<?>) {
-                return ((Comparable) l).compareTo(r);
-            } else if (l instanceof Number && r instanceof Number) {
-                return Double.compare(((Number) l).doubleValue(), ((Number) r).doubleValue());
-            } else {
-                int c = l.getClass().getName().compareTo(r.getClass().getName());
-                if (c == 0) {
-                    return l.toString().compareTo(r.toString());
-                } else {
-                    return c;
-                }
             }
         }
     }
