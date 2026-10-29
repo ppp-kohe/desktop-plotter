@@ -58,7 +58,9 @@ public class PlotterForMatrix implements PlotterState<PlotterForMatrix>, Plotter
     ///
     ///In this class, the plot rendering is realized by a {@link Plotter} instance and
     /// settings the properties for the plotter will be done by the saved consumers.
-    protected Map<String, Consumer<Plotter>> inits = new LinkedHashMap<>();
+    protected Map<String, PlotterInit> inits = new LinkedHashMap<>();
+
+    protected record PlotterInit(Object value, Consumer<Plotter> init) {}
 
     protected String title;
     protected String xAxisLabel;
@@ -157,7 +159,7 @@ public class PlotterForMatrix implements PlotterState<PlotterForMatrix>, Plotter
         if (!eq) {
             observeChange("width");
         }
-        addInitializer("setWidth", p -> p.setWidth(width));
+        addInitializer("setWidth", width, p -> p.setWidth(width));
         return this;
     }
 
@@ -167,7 +169,7 @@ public class PlotterForMatrix implements PlotterState<PlotterForMatrix>, Plotter
         if (!eq) {
             observeChange("height");
         }
-        addInitializer("setHeight", p -> p.setHeight(height));
+        addInitializer("setHeight", height, p -> p.setHeight(height));
         return this;
     }
 
@@ -431,67 +433,67 @@ public class PlotterForMatrix implements PlotterState<PlotterForMatrix>, Plotter
 
 
     @Override public PlotterForMatrix setPlotAreaLeftXRatio(double r) {
-        addInitializer("setPlotAreaLeftXRatio", p -> p.setPlotAreaLeftXRatio(r));
+        addInitializer("setPlotAreaLeftXRatio", r, p -> p.setPlotAreaLeftXRatio(r));
         return this;
     }
 
     @Override public PlotterForMatrix setPlotAreaRightXRatio(double r) {
-        addInitializer("setPlotAreaRightXRatio", p -> p.setPlotAreaRightXRatio(r));
+        addInitializer("setPlotAreaRightXRatio", r, p -> p.setPlotAreaRightXRatio(r));
         return this;
     }
 
     @Override public PlotterForMatrix setPlotAreaBaseXRatio(double r) {
-        addInitializer("setPlotAreaBaseXRatio", p -> p.setPlotAreaBaseXRatio(r));
+        addInitializer("setPlotAreaBaseXRatio", r, p -> p.setPlotAreaBaseXRatio(r));
         return this;
     }
 
     @Override public PlotterForMatrix setPlotAreaTopYRatio(double r) {
-        addInitializer("setPlotAreaTopYRatio", p -> p.setPlotAreaTopYRatio(r));
+        addInitializer("setPlotAreaTopYRatio", r, p -> p.setPlotAreaTopYRatio(r));
         return this;
     }
 
     @Override public PlotterForMatrix setPlotAreaBottomYRatio(double r) {
-        addInitializer("setPlotAreaBottomYRatio", p -> p.setPlotAreaBottomYRatio(r));
+        addInitializer("setPlotAreaBottomYRatio", r, p -> p.setPlotAreaBottomYRatio(r));
         return this;
     }
 
     @Override public PlotterForMatrix setPlotAreaBaseYRatio(double r) {
-        addInitializer("setPlotAreaBaseYRatio", p -> p.setPlotAreaBaseYRatio(r));
+        addInitializer("setPlotAreaBaseYRatio", r, p -> p.setPlotAreaBaseYRatio(r));
         return this;
     }
 
     @Override public PlotterForMatrix setPlotAreaBackground(Paint paint) {
-        addInitializer("setPlotAreaBackground", p -> p.setPlotAreaBackground(paint));
+        addInitializer("setPlotAreaBackground", paint, p -> p.setPlotAreaBackground(paint));
         return this;
     }
 
     @Override public PlotterForMatrix setPlotLinePaint(Paint paint) {
-        addInitializer("setPlotLinePaint", p -> p.setPlotLinePaint(paint));
+        addInitializer("setPlotLinePaint", paint, p -> p.setPlotLinePaint(paint));
         return this;
     }
 
     @Override public PlotterForMatrix setPlotIndexColor(Plotter.PlotIndexColor c) {
-        addInitializer("setPlotIndexColor", p -> p.setPlotIndexColor(c));
+        addInitializer("setPlotIndexColor", c, p -> p.setPlotIndexColor(c));
         return this;
     }
 
     @Override public PlotterForMatrix setPlotStroke(Stroke s) {
-        addInitializer("setPlotStroke", p -> p.setPlotStroke(s));
+        addInitializer("setPlotStroke", s, p -> p.setPlotStroke(s));
         return this;
     }
 
     @Override public PlotterForMatrix setPlotLineStroke(Stroke s) {
-        addInitializer("setPlotLineStroke", p -> p.setPlotLineStroke(s));
+        addInitializer("setPlotLineStroke", s, p -> p.setPlotLineStroke(s));
         return this;
     }
 
     @Override public PlotterForMatrix setTargetMoving(Plotter.PlotTargetMoving m) {
-        addInitializer("setTargetMoving", p -> p.setTargetMoving(m));
+        addInitializer("setTargetMoving", m, p -> p.setTargetMoving(m));
         return this;
     }
 
     @Override public PlotterForMatrix setPlotIndexShape(PlotterPoints.PlotIndexShape plotIndexShape) {
-        addInitializer("setPlotIndexShape", p -> {
+        addInitializer("setPlotIndexShape", plotIndexShape, p -> {
             if (p instanceof PlotterPoints pp) {
                 pp.setPlotIndexShape(plotIndexShape);
             }
@@ -500,13 +502,16 @@ public class PlotterForMatrix implements PlotterState<PlotterForMatrix>, Plotter
     }
 
     @Override public PlotterForMatrix setPlotFont(Font font) {
-        addInitializer("setPlotFont", p -> p.setPlotFont(font));
+        addInitializer("setPlotFont", font, p -> p.setPlotFont(font));
         return this;
     }
 
-    public PlotterForMatrix addInitializer(String name, Consumer<Plotter> init) {
-        inits.put(name, init);
-        observeChange("initializer." + name);
+    public PlotterForMatrix addInitializer(String name, Object newValue, Consumer<Plotter> init) {
+        var entry = inits.get(name);
+        if (entry == null || !Objects.equals(entry.value(), newValue)) {
+            inits.put(name, new PlotterInit(newValue, init));
+            observeChange("initializer." + name);
+        }
         return this;
     }
 
@@ -664,7 +669,7 @@ public class PlotterForMatrix implements PlotterState<PlotterForMatrix>, Plotter
             ((PlotterPoints) plotter).setPlotIndexShapeForLine();
         }
         inits.values().forEach(c ->
-                c.accept(plotter));
+                c.init().accept(plotter));
         if (print) {
             protInitPrint(plotter);
         }

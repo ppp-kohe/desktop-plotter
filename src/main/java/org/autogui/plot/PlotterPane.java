@@ -79,6 +79,7 @@ public class PlotterPane extends JPanel implements PlotterForMatrix.PlotterForMa
             if (plotter != null) {
                 plotter.addObserver(this);
             }
+            repaint();
         }
     }
 
