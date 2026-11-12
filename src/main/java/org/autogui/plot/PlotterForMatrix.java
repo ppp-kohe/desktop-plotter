@@ -247,7 +247,7 @@ public class PlotterForMatrix implements PlotterState<PlotterForMatrix>, Plotter
     ///            (Defaults are false.)
     ///
     ///@return this
-    @SuppressWarnings("all")
+    @SuppressWarnings({"all", "unchecked"})
     public <E> PlotterForMatrix setData(List<List<E>> data) {
         boolean eq = (((Object)this.data) == (Object) data);
         this.data = List.class.cast(data);
@@ -255,6 +255,18 @@ public class PlotterForMatrix implements PlotterState<PlotterForMatrix>, Plotter
             observeChange("data");
         }
         return this;
+    }
+
+    public PlotterForMatrix setData(Object[][] data) {
+        return setData(Arrays.stream(data)
+                .map(Arrays::asList)
+                .toList());
+    }
+
+    public PlotterForMatrix setData(Object[][] data, boolean topRowIsLabel, boolean topColumnIsLabel) {
+        return setData(Arrays.stream(data)
+                .map(Arrays::asList)
+                .toList(), topRowIsLabel, topColumnIsLabel);
     }
 
     public void observeChange(String name) {
@@ -678,7 +690,7 @@ public class PlotterForMatrix implements PlotterState<PlotterForMatrix>, Plotter
     }
 
     protected void protInitPrint(Plotter plotter) {
-        plotter.setPlotPrintForPrint();
+        plotter.setPlotPaintForPrint();
     }
 
     protected void plotArea(Plotter plotter, int rows, int cols, List<String> columnLabels) {

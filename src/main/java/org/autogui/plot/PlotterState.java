@@ -26,7 +26,7 @@ public interface PlotterState<SelfType extends PlotterState<SelfType>> {
     /// calls {@link #setPlotAreaBackground(Paint)} and {@link #setPlotLinePaint(Paint)} with white and black colors for printing to white papers
     /// @return this
     @SuppressWarnings("unchecked")
-    default SelfType setPlotPrintForPrint() {
+    default SelfType setPlotPaintForPrint() {
         setPlotAreaBackground(Color.WHITE);
         setPlotLinePaint(Color.BLACK);
         return (SelfType) this;

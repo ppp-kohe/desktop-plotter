@@ -4,7 +4,7 @@
 
   <groupId>org.autogui</groupId>
   <artifactId>desktop-plotter</artifactId>
-  <version>1.0-SNAPSHOT</version>
+  <version>1.0</version>
   <packaging>jar</packaging>
 
   <name>desktop-plotter</name>
@@ -23,6 +23,7 @@
         <configuration>
           <release>25</release>
           <encoding>UTF-8</encoding>
+          <compilerArgs>-Xlint:unchecked</compilerArgs>
         </configuration>
       </plugin>
     </plugins>
