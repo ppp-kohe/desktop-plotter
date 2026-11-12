@@ -46,7 +46,7 @@ The above jshell instructions will show the window of demo outputs like the foll
 
 The code of the class [`PlotterDemo.java`](https://github.com/ppp-kohe/desktop-plotter/blob/main/src/main/java/org/autogui/plot/PlotterDemo.java) has examples of usage of the library.
 
-The library takes a table as inputs. The class `PlotterMatrix` is convenint gateway of the library.
+The library takes a table as inputs. The class `PlotterMatrix` is a convenient gateway of the library.
 
 An input table takes the following form:
 ```
@@ -57,7 +57,7 @@ An input table takes the following form:
  ...
 ```
 
-The top row and column are header for names of data series and names of data groups.
+The top row and column are headers for names of data series and names of data groups.
 
 ```java
 Object[][] data = {
@@ -71,12 +71,12 @@ p.setData(data, true, true);
 p.displayPlot();
 ```
 
-The above code will show a window of a bar-chart like the following image.
+The above code will show a window of a bar chart like the following image.
 
 * The array data has row and column labels.
-    * Each data is a number in string: you can write a `double` or `float` number directly.
-* The `setData(data, true,true)` takes 2 flags indicating that the top row is labels and also the top column is labels.
-    * The simple `setData(data)` method does not specify the labels. So data will be numbers of matrix.
+    * Each data point is a number in string: you can write a `double` or `float` number directly.
+* The `setData(data, true, true)` takes 2 flags indicating that the top row is labels and also the top column is labels.
+    * The simple `setData(data)` method does not specify the labels. So data will be numbers of the matrix.
 * The `displayPlot` call creates an output window. 
 
 ![plotter-matrix-simple](./doc/images/plotter-matrix-simple.png)
@@ -86,29 +86,29 @@ p.setMode(PlotterForMatrix.PlotMode.Line);
 p.displayPlot();
 ```
 
-Follows the above calls, another window will be shown as a like chart of same data.
+Following the above calls, another window will be shown as a line chart of the same data.
 
 ![plotter-matrix-line](./doc/images/plotter-matrix-line.png)
 
-To save the plotting result as an image file, you can use `savePlot(Path)` method like the following. 
+To save the plotting result as an image file, you can use the `savePlot(Path)` method like the following. 
 
 ```java
 import java.nio.file.*;
 p.savePlot(Paths.get("output.png"))
 ```
 
-There are other destination methods of plotting. 
+There are other destination methods for plotting. 
 
 * `BufferedImage plot()`
-* `plot(Graphics2D)` or `print(Graphics2D)` (suitable for printing: `print()` showing a pinting dialog)
+* `plot(Graphics2D)` or `print(Graphics2D)` (suitable for printing: `print()` showing a printing dialog)
 
-The `PlotterForMatrix` class has various setter method for configuring plotting output.
+The `PlotterForMatrix` class has various setter methods for configuring plotting output.
 
 * `setData(data...)` , `setDataOfSingleColumn(data...)`
 * `setHeight(h)`, `setWidth(w)`, `setSize(w,h)` : change the area size
 * `setLogarithm(boolean)` : change to log-scaling y values
 * `setMaxValue(v)`, `setMinValue(v)` : specifying the maximum or minimum y-value 
-* `setMode(Bar, Line, Point, Scatter or ScatterLine)`
+* `setMode(Bar, Line, Point, Scatter, or ScatterLine)`
 * `setPlotFont(Font)` : specifying the label font
 * `setPlotIndexColor((col,maxCols) -> Color)` : specifying the coloring function
 * `setPlotPaintForDark()`, `setPlotPaintForLight()`, `setPlotPaintForPrint()` : specifying background and font colors by theme. `setPlotAreaBackground(Color)` and `setPlotAreaForeground(Color)` can specify manually. 
@@ -119,11 +119,11 @@ The `PlotterForMatrix` class has various setter method for configuring plotting 
 * `setValueLabel(boolean)`: change showing labels of values
 
 
-The `PlotterPane` class is a Swing comopnent showing `PlotterForMatrix`.
-It can be used with simply creating a new instance by `new PlotterPane()` and `setPlotter(PlotterForMatrix)`.
+The `PlotterPane` class is a Swing component showing `PlotterForMatrix`.
+It can be used by simply creating a new instance with `new PlotterPane()` and `setPlotter(PlotterForMatrix)`.
 
 ### Converting data for plotting
 
-The library has data collector named `PlotterDataBuilder` in the subpackage `org.autogui.plot.data`.
+The library has a data collector named `PlotterDataBuilder` in the sub-package `org.autogui.plot.data`.
 
-For guidance, refer the documentation comments of [the class](https://github.com/ppp-kohe/desktop-plotter/blob/main/src/main/java/org/autogui/plot/data/PlotterDataBuilder.java) and [the test-class](https://github.com/ppp-kohe/desktop-plotter/blob/main/src/test/java/org/autogui/plot/test/data/PlotterDataBuilderTest.java) as usage examples. 
+For guidance, refer to the documentation comments of [the class](https://github.com/ppp-kohe/desktop-plotter/blob/main/src/main/java/org/autogui/plot/data/PlotterDataBuilder.java) and [the test class](https://github.com/ppp-kohe/desktop-plotter/blob/main/src/test/java/org/autogui/plot/test/data/PlotterDataBuilderTest.java) as usage examples. 
